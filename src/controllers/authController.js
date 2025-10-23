@@ -1,4 +1,6 @@
 import User from '../models/User.js';
+import tokenBlacklist from '../utils/tokenBlacklist.js';
+import jwt from 'jsonwebtoken';
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -149,8 +151,28 @@ export const getMe = async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 export const logout = async (req, res) => {
-  res.json({
-    success: true,
-    message: 'התנתקת בהצלחה'
-  });
+  try {
+    // לוקח את ה-token שנשמר ב-auth middleware
+    const token = req.token;
+
+    if (token) {
+      // מחשב את זמן פקיעת הטוקן
+      const decoded = jwt.decode(token);
+      const expiryTime = decoded.exp * 1000; // המר לmilliseconds
+
+      // מוסיף את הטוקן לרשימה השחורה
+      tokenBlacklist.add(token, expiryTime);
+    }
+
+    res.json({
+      success: true,
+      message: 'התנתקת בהצלחה'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בהתנתקות'
+    });
+  }
 };

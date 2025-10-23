@@ -1,294 +1,333 @@
+// controllers/orderController.js - Enhanced for Week 4
+
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
-import { generateOrderNumber } from '../utils/orderNumber.js';
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private
-export const createOrder = async (req, res) => {
-  try {
-    const { shippingAddress, paymentMethod = 'credit_card', expectedTotal } = req.body;
-
-    // ⭐ Get cart from DB (not from client!)
-    const cart = await Cart.findOne({ user: req.user.id }).populate('items.product');
-
-    if (!cart || cart.items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'העגלה ריקה'
-      });
-    }
-
-    // Validate shipping address
-    if (!shippingAddress || !shippingAddress.fullName || !shippingAddress.street || !shippingAddress.city) {
-      return res.status(400).json({
-        success: false,
-        message: 'פרטי משלוח חסרים'
-      });
-    }
-
-    // ⭐ Validate ALL products from DB & calculate pricing
-    let subtotal = 0;
-    const orderItems = [];
-    const unavailableProducts = [];
-
-    for (const item of cart.items) {
-      // Fetch fresh product data from DB
-      const product = await Product.findById(item.product);
-
-      if (!product) {
-        unavailableProducts.push(`מוצר ${item.product} לא נמצא`);
-        continue;
-      }
-
-      if (product.status !== 'active') {
-        unavailableProducts.push(`${product.name_he} - לא זמין`);
-        continue;
-      }
-
-      // ⭐ תיקון: stock.available
-      if (!product.stock.available) {
-        unavailableProducts.push(`${product.name_he} - אזל מהמלאי`);
-        continue;
-      }
-
-      // Check quantity
-      if (product.stock.quantity && product.stock.quantity < item.quantity) {
-        unavailableProducts.push(`${product.name_he} - נותרו רק ${product.stock.quantity} יחידות`);
-        continue;
-      }
-
-      // ⭐ Use REAL price from DB!
-      const actualPrice = product.price.ils;
-
-      orderItems.push({
-        product: product._id,
-        quantity: item.quantity,
-        price: actualPrice, // ⭐ מחיר אמיתי מה-DB
-        name: product.name_he,
-        image: product.images[0]?.url || product.images.main,
-        asin: product.asin
-      });
-
-      subtotal += actualPrice * item.quantity;
-    }
-
-    // If any products unavailable, return error
-    if (unavailableProducts.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'חלק מהמוצרים לא זמינים',
-        unavailableProducts
-      });
-    }
-
-    if (orderItems.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'אין מוצרים זמינים להזמנה'
-      });
-    }
-
-    // Calculate tax and shipping
-    const taxRate = parseFloat(process.env.TAX_RATE) || 0.17;
-    const tax = subtotal * taxRate;
-
-    const freeShippingThreshold = parseFloat(process.env.FREE_SHIPPING_THRESHOLD) || 200;
-    const standardShippingCost = parseFloat(process.env.STANDARD_SHIPPING_COST) || 30;
-    const shipping = subtotal >= freeShippingThreshold ? 0 : standardShippingCost;
-
-    const total = subtotal + tax + shipping;
-
-    // ⭐ Price verification - check if client's expected price matches actual price
-    if (expectedTotal && Math.abs(total - expectedTotal) > 0.01) {
-      return res.status(409).json({
-        success: false,
-        message: 'המחיר השתנה מאז הוספת המוצרים לעגלה',
-        code: 'PRICE_CHANGED',
-        pricing: {
-          expected: expectedTotal,
-          actual: total,
-          difference: total - expectedTotal,
-          breakdown: {
-            subtotal,
-            tax,
-            shipping,
-            total
-          }
-        }
-      });
-    }
-
-    // Generate order number
-    const orderNumber = await generateOrderNumber();
-
-    // Create order
-    const order = await Order.create({
-      orderNumber,
-      user: req.user.id,
-      items: orderItems,
-      shippingAddress,
-      pricing: {
-        subtotal,
-        tax,
-        shipping,
-        total
-      },
-      payment: {
-        method: paymentMethod,
-        status: 'pending'
-      },
-      shipping: {
-        method: 'standard',
-        estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-      }
-    });
-
-    // Clear user's cart
-    await Cart.findOneAndUpdate(
-      { user: req.user.id },
-      { $set: { items: [] } }
-    );
-
-    // Update product statistics
-    for (const item of orderItems) {
-      await Product.findByIdAndUpdate(item.product, {
-        $inc: { 'stats.sales': item.quantity }
-      });
-    }
-
-    await order.populate('items.product');
-
-    res.status(201).json({
-      success: true,
-      message: 'ההזמנה נוצרה בהצלחה',
-      data: order
-    });
-  } catch (error) {
-    console.error('Create order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'שגיאה ביצירת הזמנה',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get user orders
+// @desc    Get my orders with filtering and pagination
 // @route   GET /api/orders/my-orders
 // @access  Private
 export const getMyOrders = async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
-
-        const orders = await Order.find({ user: req.user.id })
-            .sort({ createdAt: -1 })
-            .limit(limit)
-            .skip(skip)
-            .populate('items.product', 'name_he images.main');
-
-        const total = await Order.countDocuments({ user: req.user.id });
-
-        res.json({
-            success: true,
-            data: orders,
-            pagination: {
-                page,
-                limit,
-                total,
-                pages: Math.ceil(total / limit)
-            }
-        });
-    } catch (error) {
-        console.error('Get orders error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'שגיאה בקבלת הזמנות'
-        });
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      sortBy = '-createdAt'
+    } = req.query;
+    
+    // Build query
+    const query = { user: req.user.id };
+    
+    // Filter by status
+    if (status && status !== 'all') {
+      query.status = status;
     }
+    
+    // Get orders with pagination
+    const orders = await Order.find(query)
+      .populate('items.product', 'name_he imageUrl price')
+      .populate('shippingAddress')
+      .sort(sortBy)
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .lean();
+    
+    // Get total count for pagination
+    const total = await Order.countDocuments(query);
+    
+    res.json({
+      success: true,
+      data: orders,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get my orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בטעינת ההזמנות'
+    });
+  }
 };
 
 // @desc    Get single order
 // @route   GET /api/orders/:id
 // @access  Private
 export const getOrderById = async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.id)
-            .populate('items.product', 'name_he images.main asin')
-            .populate('user', 'firstName lastName email');
+  try {
+    const order = await Order.findOne({
+      _id: req.params.id,
+      user: req.user.id
+    })
+      .populate('items.product', 'name_he imageUrl price asin')
+      .populate('shippingAddress')
+      .lean();
 
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: 'הזמנה לא נמצאה'
-            });
-        }
-
-        // Check if user owns this order or is admin
-        if (order.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'אין לך הרשאה לצפות בהזמנה זו'
-            });
-        }
-
-        res.json({
-            success: true,
-            data: order
-        });
-    } catch (error) {
-        console.error('Get order error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'שגיאה בקבלת הזמנה'
-        });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
     }
+
+    res.json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    console.error('Get order error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בטעינת ההזמנה'
+    });
+  }
+};
+
+// @desc    Create new order
+// @route   POST /api/orders
+// @access  Private
+export const createOrder = async (req, res) => {
+  try {
+    const { items, shippingAddress } = req.body;
+
+    // Validation
+    if (!items || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'העגלה ריקה'
+      });
+    }
+
+    if (!shippingAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'כתובת משלוח נדרשת'
+      });
+    }
+
+    // Validate and calculate totals
+    let subtotal = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      const product = await Product.findById(item.product);
+      
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: `מוצר ${item.product} לא נמצא`
+        });
+      }
+
+      // Check if product is available
+      if (!product.stock.available) {
+        return res.status(400).json({
+          success: false,
+          message: `מוצר ${product.name_he} אינו זמין במלאי`
+        });
+      }
+
+      // Check if sufficient quantity exists
+      if (product.stock.quantity < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `כמות לא מספקת במלאי עבור ${product.name_he}. זמין: ${product.stock.quantity}, מבוקש: ${item.quantity}`
+        });
+      }
+
+      const itemTotal = product.price.ils * item.quantity;
+      subtotal += itemTotal;
+
+      // Get primary image or first image
+      const primaryImage = product.images?.find(img => img.isPrimary);
+      const imageUrl = primaryImage?.url || product.images?.[0]?.url || '';
+
+      orderItems.push({
+        product: product._id,
+        name: product.name_he,
+        quantity: item.quantity,
+        price: product.price.ils,
+        image: imageUrl
+      });
+    }
+
+    // Calculate shipping
+    const shippingCost = subtotal >= 200 ? 0 : 20;
+    
+    // Calculate tax
+    const tax = subtotal * 0.17; // 17% VAT
+    
+    // Calculate total
+    const totalAmount = subtotal + shippingCost + tax;
+
+    // Generate order number
+    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+    // Create order
+    const order = await Order.create({
+      user: req.user.id,
+      orderNumber,
+      items: orderItems,
+      shippingAddress,
+      pricing: {
+        subtotal,
+        shipping: shippingCost,
+        tax,
+        total: totalAmount
+      },
+      status: 'pending'
+    });
+
+    // Clear user's cart
+    await Cart.findOneAndDelete({ user: req.user.id });
+
+    // Populate order before sending
+    const populatedOrder = await Order.findById(order._id)
+      .populate('items.product', 'name_he images price');
+
+    res.status(201).json({
+      success: true,
+      data: populatedOrder,
+      message: 'ההזמנה נוצרה בהצלחה'
+    });
+  } catch (error) {
+    console.error('Create order error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה ביצירת הזמנה'
+    });
+  }
 };
 
 // @desc    Update order status (Admin only)
 // @route   PUT /api/orders/:id/status
 // @access  Private/Admin
 export const updateOrderStatus = async (req, res) => {
-    try {
-        const { status, message } = req.body;
+  try {
+    const { status } = req.body;
 
-        const order = await Order.findById(req.params.id);
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: 'הזמנה לא נמצאה'
-            });
-        }
-
-        order.status = status;
-        order.timeline.push({
-            status,
-            message: message || `סטטוס עודכן ל-${status}`
-        });
-
-        // Update shipped/delivered dates
-        if (status === 'shipped' && !order.shipping.shippedAt) {
-            order.shipping.shippedAt = new Date();
-        }
-        if (status === 'delivered' && !order.shipping.deliveredAt) {
-            order.shipping.deliveredAt = new Date();
-        }
-
-        await order.save();
-
-        res.json({
-            success: true,
-            message: 'סטטוס הזמנה עודכן',
-            data: order
-        });
-    } catch (error) {
-        console.error('Update order status error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'שגיאה בעדכון סטטוס'
-        });
+    const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'סטטוס לא תקין'
+      });
     }
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
+    }
+
+    order.status = status;
+    
+    // Update delivery date if delivered
+    if (status === 'delivered') {
+      order.deliveredAt = Date.now();
+    }
+
+    await order.save();
+
+    res.json({
+      success: true,
+      data: order,
+      message: 'סטטוס ההזמנה עודכן'
+    });
+  } catch (error) {
+    console.error('Update order status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בעדכון סטטוס הזמנה'
+    });
+  }
+};
+
+// @desc    Cancel order
+// @route   PUT /api/orders/:id/cancel
+// @access  Private
+export const cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findOne({
+      _id: req.params.id,
+      user: req.user.id
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
+    }
+
+    // Check if order can be cancelled
+    if (order.status === 'delivered' || order.status === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'לא ניתן לבטל הזמנה זו'
+      });
+    }
+
+    order.status = 'cancelled';
+    await order.save();
+
+    res.json({
+      success: true,
+      data: order,
+      message: 'ההזמנה בוטלה בהצלחה'
+    });
+  } catch (error) {
+    console.error('Cancel order error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בביטול הזמנה'
+    });
+  }
+};
+
+// @desc    Get order statistics
+// @route   GET /api/orders/stats
+// @access  Private
+export const getOrderStats = async (req, res) => {
+  try {
+    const stats = await Order.aggregate([
+      { $match: { user: req.user._id } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          total: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+
+    const totalOrders = await Order.countDocuments({ user: req.user.id });
+    const totalSpent = await Order.aggregate([
+      { $match: { user: req.user._id, status: { $ne: 'cancelled' } } },
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalOrders,
+        totalSpent: totalSpent[0]?.total || 0,
+        byStatus: stats
+      }
+    });
+  } catch (error) {
+    console.error('Get order stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בטעינת סטטיסטיקות'
+    });
+  }
 };

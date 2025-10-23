@@ -1,101 +1,117 @@
+// models/User.js - Enhanced for Week 4
+
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-const addressSchema = new mongoose.Schema({
-  type: {
-    type: String,
-    enum: ['home', 'work', 'other'],
-    default: 'home'
-  },
-  fullName: { type: String, required: true },
-  phone: { type: String, required: true },
-  street: { type: String, required: true },
-  city: { type: String, required: true },
-  zipCode: { type: String, required: true },
-  apartment: String,
-  floor: String,
-  entrance: String,
-  notes: String,
-  isDefault: { type: Boolean, default: false }
-});
-
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
-    required: [true, 'נא להזין אימייל'],
+    required: [true, 'אימייל נדרש'],
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\S+@\S+\.\S+$/, 'נא להזין אימייל תקין']
+    match: [/^\S+@\S+\.\S+$/, 'אימייל לא תקין']
   },
   password: {
     type: String,
-    required: [true, 'נא להזין סיסמה'],
-    minlength: [6, 'סיסמה חייבת להיות לפחות 6 תווים'],
+    required: [true, 'סיסמה נדרשת'],
+    minlength: [6, 'סיסמה חייבת להכיל לפחות 6 תווים'],
     select: false
   },
   firstName: {
     type: String,
-    required: [true, 'נא להזין שם פרטי']
+    required: [true, 'שם פרטי נדרש'],
+    trim: true
   },
   lastName: {
     type: String,
-    required: [true, 'נא להזין שם משפחה']
+    required: [true, 'שם משפחה נדרש'],
+    trim: true
   },
   phone: {
     type: String,
-    required: [true, 'נא להזין מספר טלפון']
+    required: [true, 'טלפון נדרש'],
+    match: [/^05\d{8}$/, 'מספר טלפון לא תקין']
   },
   
-  addresses: [addressSchema],
-  
+  // ⭐ New fields for Week 4
+  profileImage: {
+    type: String,
+    default: null
+  },
+  bio: {
+    type: String,
+    maxlength: [500, 'ביוגרפיה יכולה להכיל עד 500 תווים']
+  },
   preferences: {
-    newsletter: { type: Boolean, default: true },
-    smsNotifications: { type: Boolean, default: false }
+    language: {
+      type: String,
+      enum: ['he', 'en'],
+      default: 'he'
+    },
+    currency: {
+      type: String,
+      enum: ['ILS', 'USD'],
+      default: 'ILS'
+    },
+    notifications: {
+      email: {
+        type: Boolean,
+        default: true
+      },
+      sms: {
+        type: Boolean,
+        default: false
+      }
+    }
   },
-  
-  stats: {
-    totalOrders: { type: Number, default: 0 },
-    totalSpent: { type: Number, default: 0 },
-    averageOrderValue: { type: Number, default: 0 }
+  accountStatus: {
+    type: String,
+    enum: ['active', 'suspended', 'deleted'],
+    default: 'active'
+  },
+  lastActive: {
+    type: Date,
+    default: Date.now
   },
   
   role: {
     type: String,
     enum: ['user', 'admin'],
     default: 'user'
-  },
-  
-  isVerified: { type: Boolean, default: false },
-  verificationToken: String,
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
-  
-  lastLogin: Date,
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  }
+}, {
+  timestamps: true
 });
 
-// Hash password לפני שמירה
+// Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password')) {
+    return next();
+  }
   
-  const salt = await bcrypt.genSalt(12);
+  const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
-// עדכון updatedAt
-userSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
-});
-
-// השוואת סיסמה
+// Compare password
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// Update last active
+userSchema.methods.updateLastActive = function() {
+  this.lastActive = Date.now();
+  return this.save();
+};
+
+// Generate full name
+userSchema.virtual('fullName').get(function() {
+  return `${this.firstName} ${this.lastName}`;
+});
+
 
 // יצירת JWT token
 userSchema.methods.generateAuthToken = function() {
@@ -106,6 +122,8 @@ userSchema.methods.generateAuthToken = function() {
   );
 };
 
-const User = mongoose.model('User', userSchema);
+// Ensure virtuals are included in JSON
+userSchema.set('toJSON', { virtuals: true });
+userSchema.set('toObject', { virtuals: true });
 
-export default User;
+export default mongoose.model('User', userSchema);

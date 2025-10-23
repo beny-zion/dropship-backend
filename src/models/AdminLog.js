@@ -1,0 +1,118 @@
+// models/AdminLog.js - מודל לתיעוד פעולות Admin
+
+import mongoose from 'mongoose';
+
+const adminLogSchema = new mongoose.Schema({
+  // מי ביצע את הפעולה
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  userEmail: {
+    type: String,
+    required: true
+  },
+
+  // מה נעשה
+  action: {
+    type: String,
+    required: true,
+    enum: [
+      'CREATE_PRODUCT',
+      'UPDATE_PRODUCT',
+      'DELETE_PRODUCT',
+      'UPDATE_ORDER_STATUS',
+      'UPDATE_TRACKING',
+      'VIEW_DASHBOARD',
+      'VIEW_ALL_ORDERS',
+      'VIEW_ALL_USERS'
+    ]
+  },
+
+  // פרטים נוספים
+  details: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+
+  // מידע טכני
+  resourceType: {
+    type: String, // 'Product', 'Order', 'User'
+    required: true
+  },
+  resourceId: {
+    type: String, // ID של המוצר/הזמנה שהושפע
+    default: null
+  },
+
+  // IP ו-User Agent
+  ipAddress: {
+    type: String,
+    required: true
+  },
+  userAgent: {
+    type: String,
+    default: null
+  },
+
+  // תוצאה
+  status: {
+    type: String,
+    enum: ['SUCCESS', 'FAILED'],
+    default: 'SUCCESS'
+  },
+  errorMessage: {
+    type: String,
+    default: null
+  }
+}, {
+  timestamps: true // createdAt, updatedAt
+});
+
+// אינדקסים לחיפוש מהיר
+adminLogSchema.index({ userId: 1, createdAt: -1 });
+adminLogSchema.index({ action: 1, createdAt: -1 });
+adminLogSchema.index({ resourceType: 1, resourceId: 1 });
+adminLogSchema.index({ createdAt: -1 }); // מיון לפי תאריך
+
+// Method להוספת לוג בקלות
+adminLogSchema.statics.logAction = async function(data) {
+  try {
+    return await this.create({
+      userId: data.user._id,
+      userEmail: data.user.email,
+      action: data.action,
+      details: data.details || {},
+      resourceType: data.resourceType,
+      resourceId: data.resourceId,
+      ipAddress: data.ip,
+      userAgent: data.userAgent,
+      status: 'SUCCESS'
+    });
+  } catch (error) {
+    console.error('Failed to create admin log:', error);
+  }
+};
+
+// Method לרישום כשלון
+adminLogSchema.statics.logFailure = async function(data) {
+  try {
+    return await this.create({
+      userId: data.user._id,
+      userEmail: data.user.email,
+      action: data.action,
+      details: data.details || {},
+      resourceType: data.resourceType,
+      resourceId: data.resourceId,
+      ipAddress: data.ip,
+      userAgent: data.userAgent,
+      status: 'FAILED',
+      errorMessage: data.error
+    });
+  } catch (error) {
+    console.error('Failed to create admin log:', error);
+  }
+};
+
+export default mongoose.model('AdminLog', adminLogSchema);

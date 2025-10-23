@@ -1,10 +1,11 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import tokenBlacklist from '../utils/tokenBlacklist.js';
 
 export const auth = async (req, res, next) => {
   try {
     let token;
-    
+
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
@@ -13,6 +14,14 @@ export const auth = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: 'נא להתחבר תחילה'
+      });
+    }
+
+    // 🔒 בדיקה אם ה-token ברשימה השחורה
+    if (tokenBlacklist.has(token)) {
+      return res.status(401).json({
+        success: false,
+        message: 'הטוקן בוטל, נא להתחבר מחדש'
       });
     }
 
@@ -27,6 +36,8 @@ export const auth = async (req, res, next) => {
         });
       }
 
+      // שמירת ה-token ב-req לשימוש עתידי (logout)
+      req.token = token;
       req.user = user;
       next();
     } catch (error) {
