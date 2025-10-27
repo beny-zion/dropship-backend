@@ -1,4 +1,4 @@
-// models/AdminLog.js - מודל לתיעוד פעולות Admin
+// models/AdminLog.js - Week 5: Updated with all admin actions
 
 import mongoose from 'mongoose';
 
@@ -19,14 +19,30 @@ const adminLogSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: [
+      // Products
       'CREATE_PRODUCT',
       'UPDATE_PRODUCT',
       'DELETE_PRODUCT',
+      'UPDATE_PRODUCT_STOCK',
+      'TOGGLE_PRODUCT_FEATURED',
+      'UPDATE_PRODUCT_STATUS',
+      'BULK_DELETE_PRODUCTS',
+      'VIEW_PRODUCTS',
+      'VIEW_PRODUCT',
+      // Orders
       'UPDATE_ORDER_STATUS',
       'UPDATE_TRACKING',
-      'VIEW_DASHBOARD',
+      'ADD_ORDER_NOTES',
+      'CANCEL_ORDER',
       'VIEW_ALL_ORDERS',
-      'VIEW_ALL_USERS'
+      'VIEW_ORDER',
+      // Users
+      'VIEW_ALL_USERS',
+      'VIEW_USER',
+      'VIEW_USER_ORDERS',
+      'UPDATE_USER_STATUS',
+      // Dashboard
+      'VIEW_DASHBOARD'
     ]
   },
 

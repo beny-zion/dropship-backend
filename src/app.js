@@ -1,4 +1,4 @@
-// app.js - Updated for Week 4
+// app.js - Week 5: Admin Panel Complete
 
 import express from 'express';
 import cors from 'cors';
@@ -15,8 +15,8 @@ import productRoutes from './routes/productRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
-import userRoutes from './routes/userRoutes.js'; // ⭐ New
-import addressRoutes from './routes/addressRoutes.js'; // ⭐ New
+import userRoutes from './routes/userRoutes.js';
+import addressRoutes from './routes/addressRoutes.js';
 
 dotenv.config();
 
@@ -42,11 +42,11 @@ app.use(morgan('dev'));
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminRoutes); // ⭐ Complete Admin Panel
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/users', userRoutes); // ⭐ New
-app.use('/api/users/addresses', addressRoutes); // ⭐ New
+app.use('/api/users', userRoutes);
+app.use('/api/users/addresses', addressRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -55,7 +55,7 @@ app.get('/health', (req, res) => {
     message: 'Server is running',
     timestamp: new Date(),
     environment: process.env.NODE_ENV,
-    version: '1.0.0 - Week 4'
+    version: '2.0.0 - Week 5'
   });
 });
 
@@ -63,15 +63,36 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Amazon Dropship API - Week 4',
+    message: 'Amazon Dropship API - Week 5: Admin Panel Complete',
+    version: '2.0.0',
     endpoints: {
       auth: '/api/auth',
       products: '/api/products',
       cart: '/api/cart',
       orders: '/api/orders',
-      users: '/api/users', // ⭐ New
-      addresses: '/api/users/addresses', // ⭐ New
-      admin: '/api/admin'
+      users: '/api/users',
+      addresses: '/api/users/addresses',
+      admin: {
+        dashboard: '/api/admin/dashboard/*',
+        products: '/api/admin/products',
+        orders: '/api/admin/orders',
+        users: '/api/admin/users'
+      }
+    },
+    features: {
+      security: [
+        'Rate Limiting',
+        'Audit Logging',
+        'Input Validation',
+        'Token Blacklist'
+      ],
+      admin: [
+        'Dashboard with Analytics',
+        'Products Management',
+        'Orders Management',
+        'Users Management',
+        'Real-time Statistics'
+      ]
     }
   });
 });
@@ -102,23 +123,45 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV}`);
-  console.log(`📦 Week 5: Admin Panel + Enhanced Security`);
-  console.log(`\n🔗 Available endpoints:`);
-  console.log(`   - Auth: http://localhost:${PORT}/api/auth`);
-  console.log(`   - Products: http://localhost:${PORT}/api/products`);
-  console.log(`   - Cart: http://localhost:${PORT}/api/cart`);
-  console.log(`   - Orders: http://localhost:${PORT}/api/orders`);
-  console.log(`   - Users: http://localhost:${PORT}/api/users`);
-  console.log(`   - Addresses: http://localhost:${PORT}/api/users/addresses`);
-  console.log(`   - Admin: http://localhost:${PORT}/api/admin`);
-  console.log(`\n🔒 Security Features:`);
-  console.log(`   ✅ Rate Limiting (100/min general, 200/15min admin, 10/15min auth)`);
-  console.log(`   ✅ Audit Logging (all admin actions tracked)`);
-  console.log(`   ✅ Input Validation & Sanitization`);
-  console.log(`   ✅ Token Blacklist (secure logout)`);
-  console.log(`\n✅ Backend Week 5 Ready!`);
+  console.log('\n🚀 ════════════════════════════════════════════════════');
+  console.log(`   Amazon Dropship API - Week 5`);
+  console.log('   ════════════════════════════════════════════════════\n');
+  
+  console.log(`📡 Server: http://localhost:${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📦 Version: 2.0.0\n`);
+  
+  console.log('🔗 Public Endpoints:');
+  console.log(`   • Auth:     http://localhost:${PORT}/api/auth`);
+  console.log(`   • Products: http://localhost:${PORT}/api/products`);
+  console.log(`   • Cart:     http://localhost:${PORT}/api/cart`);
+  console.log(`   • Orders:   http://localhost:${PORT}/api/orders`);
+  console.log(`   • Users:    http://localhost:${PORT}/api/users\n`);
+  
+  console.log('🔐 Admin Panel Endpoints:');
+  console.log(`   • Dashboard:  http://localhost:${PORT}/api/admin/dashboard/stats`);
+  console.log(`   • Products:   http://localhost:${PORT}/api/admin/products`);
+  console.log(`   • Orders:     http://localhost:${PORT}/api/admin/orders`);
+  console.log(`   • Users:      http://localhost:${PORT}/api/admin/users\n`);
+  
+  console.log('🔒 Security Features:');
+  console.log('   ✅ Rate Limiting');
+  console.log('      • General: 100 requests/min');
+  console.log('      • Admin: 200 requests/15min');
+  console.log('      • Auth: 10 requests/15min');
+  console.log('   ✅ Audit Logging (all admin actions)');
+  console.log('   ✅ Input Validation & Sanitization');
+  console.log('   ✅ Token Blacklist (secure logout)\n');
+  
+  console.log('📊 Admin Features:');
+  console.log('   ✅ Real-time Dashboard & Analytics');
+  console.log('   ✅ Products CRUD with bulk operations');
+  console.log('   ✅ Orders Management & Tracking');
+  console.log('   ✅ Users Management & Statistics');
+  console.log('   ✅ Sales Charts & Reports\n');
+  
+  console.log('✅ Backend Week 5 Complete!\n');
+  console.log('════════════════════════════════════════════════════\n');
 });
 
 export default app;
