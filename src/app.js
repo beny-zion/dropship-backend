@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 
 import connectDB from './config/db.js';
 import { generalRateLimiter } from './middleware/rateLimiter.js';
+import { sanitizePublicResponse } from './middleware/sanitizeResponse.js';
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -17,6 +18,7 @@ import cartRoutes from './routes/cartRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import addressRoutes from './routes/addressRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 
 dotenv.config();
 
@@ -35,9 +37,12 @@ app.use(cors({
 // 🔒 Rate Limiting כללי על כל ה-API (100 בקשות לדקה)
 app.use('/api', generalRateLimiter);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // הגדלת מגבלה להעלאת תמונות
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
+
+// 🔒 Sanitize public responses - remove sensitive data from client responses
+app.use(sanitizePublicResponse);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -47,6 +52,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/users/addresses', addressRoutes);
+app.use('/api/upload', uploadRoutes); // 📤 Image Upload (Cloudinary)
 
 // Health check
 app.get('/health', (req, res) => {

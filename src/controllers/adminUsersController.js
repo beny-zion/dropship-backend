@@ -58,11 +58,12 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       .sort(sortBy)
       .skip(skip)
       .limit(limit)
-      .select('-password -__v'),
+      .select('-password -__v')
+      .lean(), // Convert to plain JavaScript objects
     User.countDocuments(filter)
   ]);
 
-  // Get order counts for each user
+  // Get order counts for each user and ensure IDs are strings
   const usersWithStats = await Promise.all(
     users.map(async (user) => {
       const orderCount = await Order.countDocuments({ user: user._id });
@@ -82,7 +83,8 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       ]);
 
       return {
-        ...user.toObject(),
+        ...user,
+        _id: user._id.toString(), // Convert _id to string
         stats: {
           totalOrders: orderCount,
           totalSpent: totalSpent[0]?.total || 0
@@ -107,7 +109,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/users/:id
 // @access  Private/Admin
 export const getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id).select('-password');
+  const user = await User.findById(req.params.id).select('-password').lean();
 
   if (!user) {
     return res.status(404).json({
@@ -125,13 +127,13 @@ export const getUserById = asyncHandler(async (req, res) => {
     recentOrders
   ] = await Promise.all([
     Order.countDocuments({ user: user._id }),
-    Order.countDocuments({ 
-      user: user._id, 
-      status: 'delivered' 
+    Order.countDocuments({
+      user: user._id,
+      status: 'delivered'
     }),
-    Order.countDocuments({ 
-      user: user._id, 
-      status: 'cancelled' 
+    Order.countDocuments({
+      user: user._id,
+      status: 'cancelled'
     }),
     Order.aggregate([
       {
@@ -151,22 +153,34 @@ export const getUserById = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5)
       .select('orderNumber status pricing.total createdAt')
+      .lean()
   ]);
+
+  // Convert IDs to strings
+  const userWithStringId = {
+    ...user,
+    _id: user._id.toString()
+  };
+
+  const ordersWithStringIds = recentOrders.map(order => ({
+    ...order,
+    _id: order._id.toString()
+  }));
 
   res.json({
     success: true,
     data: {
-      user,
+      user: userWithStringId,
       stats: {
         totalOrders,
         completedOrders,
         cancelledOrders,
         totalSpent: totalSpent[0]?.total || 0,
-        averageOrderValue: totalOrders > 0 
-          ? (totalSpent[0]?.total || 0) / totalOrders 
+        averageOrderValue: totalOrders > 0
+          ? (totalSpent[0]?.total || 0) / totalOrders
           : 0
       },
-      recentOrders
+      recentOrders: ordersWithStringIds
     }
   });
 });
@@ -200,13 +214,20 @@ export const getUserOrders = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .select('-__v'),
+      .select('-__v')
+      .lean(),
     Order.countDocuments(filter)
   ]);
 
+  // Convert IDs to strings
+  const ordersWithStringIds = orders.map(order => ({
+    ...order,
+    _id: order._id.toString()
+  }));
+
   res.json({
     success: true,
-    data: orders,
+    data: ordersWithStringIds,
     pagination: {
       currentPage: page,
       totalPages: Math.ceil(total / limit),

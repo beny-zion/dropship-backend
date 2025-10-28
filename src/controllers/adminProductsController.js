@@ -60,13 +60,20 @@ export const getAllProducts = asyncHandler(async (req, res) => {
       .sort(sortBy)
       .skip(skip)
       .limit(limit)
-      .select('-__v'),
+      .select('-__v')
+      .lean(), // Convert to plain JavaScript objects
     Product.countDocuments(filter)
   ]);
 
+  // Ensure _id is a string for each product
+  const productsWithStringIds = products.map(product => ({
+    ...product,
+    _id: product._id.toString()
+  }));
+
   res.json({
     success: true,
-    data: products,
+    data: productsWithStringIds,
     pagination: {
       currentPage: page,
       totalPages: Math.ceil(total / limit),
@@ -80,7 +87,7 @@ export const getAllProducts = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/products/:id
 // @access  Private/Admin
 export const getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
+  const product = await Product.findById(req.params.id).lean();
 
   if (!product) {
     return res.status(404).json({
@@ -92,30 +99,36 @@ export const getProductById = asyncHandler(async (req, res) => {
   // Get sales stats for this product
   const salesStats = await Order.aggregate([
     { $unwind: '$items' },
-    { 
-      $match: { 
+    {
+      $match: {
         'items.product': product._id,
         'payment.status': 'completed'
-      } 
+      }
     },
     {
       $group: {
         _id: null,
         totalSold: { $sum: '$items.quantity' },
-        totalRevenue: { 
-          $sum: { $multiply: ['$items.quantity', '$items.price'] } 
+        totalRevenue: {
+          $sum: { $multiply: ['$items.quantity', '$items.price'] }
         }
       }
     }
   ]);
 
+  // Convert ID to string
+  const productWithStringId = {
+    ...product,
+    _id: product._id.toString()
+  };
+
   res.json({
     success: true,
     data: {
-      product,
+      product: productWithStringId,
       stats: {
-        views: product.stats.views || 0,
-        clicks: product.stats.clicks || 0,
+        views: product.stats?.views || 0,
+        clicks: product.stats?.clicks || 0,
         sales: salesStats[0]?.totalSold || 0,
         revenue: salesStats[0]?.totalRevenue || 0
       }
@@ -175,14 +188,21 @@ export const updateProduct = asyncHandler(async (req, res) => {
     req.body,
     {
       new: true,
-      runValidators: true
+      runValidators: true,
+      lean: true
     }
   );
+
+  // Convert ID to string
+  const productWithStringId = {
+    ...product,
+    _id: product._id.toString()
+  };
 
   res.json({
     success: true,
     message: 'המוצר עודכן בהצלחה',
-    data: product
+    data: productWithStringId
   });
 });
 

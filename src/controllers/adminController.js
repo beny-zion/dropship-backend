@@ -1,4 +1,5 @@
 import Product from '../models/Product.js';
+import { cacheDel, cacheDelPattern, CACHE_KEYS } from '../utils/cache.js';
 
 // @desc    Create product
 // @route   POST /api/admin/products
@@ -6,6 +7,9 @@ import Product from '../models/Product.js';
 export const createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
+
+    // ⚡ Clear products list cache (new product added)
+    cacheDelPattern('products:');
 
     res.status(201).json({
       success: true,
@@ -42,6 +46,14 @@ export const updateProduct = async (req, res) => {
       });
     }
 
+    // ⚡ Clear cache for this product so users get fresh data
+    cacheDel(CACHE_KEYS.PRODUCT(id));
+    cacheDel(CACHE_KEYS.PRODUCT(product.slug));
+    cacheDel(CACHE_KEYS.PRODUCT(product.asin));
+
+    // ⚡ Also clear products list cache (product details changed)
+    cacheDelPattern('products:');
+
     res.json({
       success: true,
       message: 'מוצר עודכן בהצלחה',
@@ -73,6 +85,14 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
+    // ⚡ Clear cache for deleted product
+    cacheDel(CACHE_KEYS.PRODUCT(id));
+    cacheDel(CACHE_KEYS.PRODUCT(product.slug));
+    cacheDel(CACHE_KEYS.PRODUCT(product.asin));
+
+    // ⚡ Clear products list cache (product removed)
+    cacheDelPattern('products:');
+
     res.json({
       success: true,
       message: 'מוצר נמחק בהצלחה'
@@ -94,12 +114,19 @@ export const getAllProducts = async (req, res) => {
   try {
     const products = await Product.find()
       .sort('-createdAt')
-      .select('-__v');
+      .select('-__v')
+      .lean();
+
+    // Convert IDs to strings
+    const productsWithStringIds = products.map(product => ({
+      ...product,
+      _id: product._id.toString()
+    }));
 
     res.json({
       success: true,
-      count: products.length,
-      data: products
+      count: productsWithStringIds.length,
+      data: productsWithStringIds
     });
   } catch (error) {
     console.error('Get all products error:', error);

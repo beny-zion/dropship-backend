@@ -61,8 +61,60 @@ const productSchema = new mongoose.Schema({
     min: 0,
     max: 100
   },
-  
-  // מלאי ומשלוח
+
+  // פירוט עלויות (Dropshipping Cost Breakdown)
+  costBreakdown: {
+    baseCost: {
+      usd: {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      ils: {
+        type: Number,
+        default: 0,
+        min: 0
+      }
+    },
+    taxPercent: {
+      type: Number,
+      default: 18, // מע"ם ישראלי
+      min: 0,
+      max: 100
+    },
+    shippingCost: {
+      usd: {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      ils: {
+        type: Number,
+        default: 0,
+        min: 0
+      }
+    },
+    additionalFees: {
+      usd: {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      ils: {
+        type: Number,
+        default: 0,
+        min: 0
+      }
+    },
+    profitMargin: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    notes: String // הערות על העלויות
+  },
+
+  // מלאי ומשלוח (מותאם ל-Dropshipping)
   stock: {
     available: {
       type: Boolean,
@@ -70,7 +122,15 @@ const productSchema = new mongoose.Schema({
     },
     quantity: {
       type: Number,
-      default: 0
+      default: null // null = מלאי לא מוגבל/לא רלוונטי
+    },
+    trackInventory: {
+      type: Boolean,
+      default: false // האם לעקוב אחרי מלאי או לא
+    },
+    lowStockThreshold: {
+      type: Number,
+      default: 5
     },
     lastChecked: {
       type: Date,
@@ -171,7 +231,7 @@ const productSchema = new mongoose.Schema({
   links: {
     amazon: {
       type: String,
-      required: true
+      required: false
     },
     affiliateUrl: String
   },

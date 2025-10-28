@@ -1,11 +1,13 @@
 import Product from '../models/Product.js';
 import mongoose from 'mongoose';
+import { cacheGet, cacheSet, CACHE_KEYS } from '../utils/cache.js';
 
 // @desc    Get all products
 // @route   GET /api/products
 // @access  Public
 export const getProducts = async (req, res) => {
   try {
+    const startTime = Date.now();
     const {
       page = 1,
       limit = 12,
@@ -16,6 +18,18 @@ export const getProducts = async (req, res) => {
       sort = '-createdAt',
       featured
     } = req.query;
+
+    // ⚡ Create cache key from query params
+    const cacheKey = CACHE_KEYS.PRODUCTS_LIST({
+      page, limit, category, minPrice, maxPrice, search, sort, featured
+    });
+
+    // ⚡ Check cache first
+    let cachedData = cacheGet(cacheKey);
+    if (cachedData) {
+      console.log(`⏱️ Products list from cache took: ${Date.now() - startTime}ms`);
+      return res.json(cachedData);
+    }
 
     // בניית query
     const query = { status: 'active' };
@@ -66,17 +80,20 @@ export const getProducts = async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // ביצוע query
+    // ביצוע query - מסננים שדות רגישים ומידע אמזון
     const [products, total] = await Promise.all([
       Product.find(query)
         .sort(sortOption)
         .limit(limitNum)
         .skip(skip)
-        .select('-__v'),
+        .select('-__v -costBreakdown -links -asin -rating.amazonRating -rating.amazonReviewsCount -stats.sales')
+        .lean(),
       Product.countDocuments(query)
     ]);
 
-    res.json({
+    console.log(`⏱️ Products list query took: ${Date.now() - startTime}ms`);
+
+    const response = {
       success: true,
       data: products,
       pagination: {
@@ -85,7 +102,12 @@ export const getProducts = async (req, res) => {
         total,
         pages: Math.ceil(total / limitNum)
       }
-    });
+    };
+
+    // ⚡ Cache for 2 minutes (products list changes less frequently than individual products)
+    cacheSet(cacheKey, response, 120);
+
+    res.json(response);
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({
@@ -102,26 +124,42 @@ export const getProducts = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
+    const startTime = Date.now();
+    const cacheKey = CACHE_KEYS.PRODUCT(id);
 
-    // חיפוש לפי ID או Slug
-    const product = await Product.findOne({
-      $or: [
-        { _id: mongoose.Types.ObjectId.isValid(id) ? id : null },
-        { slug: id },
-        { asin: id.toUpperCase() }
-      ]
-    });
+    // ⚡ Check cache first
+    let product = cacheGet(cacheKey);
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'מוצר לא נמצא'
-      });
+      // חיפוש לפי ID או Slug - מסננים שדות רגישים ומידע אמזון
+      product = await Product.findOne({
+        $or: [
+          { _id: mongoose.Types.ObjectId.isValid(id) ? id : null },
+          { slug: id }
+        ],
+        status: 'active' // רק מוצרים פעילים
+      }).select('-__v -costBreakdown -links -asin -rating.amazonRating -rating.amazonReviewsCount -stats.sales').lean();
+
+      console.log(`⏱️ Product findOne took: ${Date.now() - startTime}ms`);
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: 'מוצר לא נמצא'
+        });
+      }
+
+      // ⚡ Cache for 5 minutes
+      cacheSet(cacheKey, product, 300);
+    } else {
+      console.log(`⏱️ Product from cache took: ${Date.now() - startTime}ms`);
     }
 
-    // עדכון מונה צפיות
-    product.stats.views += 1;
-    await product.save();
+    // עדכון מונה צפיות (async, don't wait)
+    Product.updateOne(
+      { _id: product._id },
+      { $inc: { 'stats.views': 1 } }
+    ).catch(err => console.error('View count update error:', err));
 
     res.json({
       success: true,

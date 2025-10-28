@@ -101,28 +101,58 @@ export const validateMongoId = [
 
 // ✅ Validation לעדכון מוצר (חלקי - כל השדות אופציונליים)
 export const validateProductUpdate = [
-  body('name')
+  body('name_he')
     .optional()
     .trim()
     .isLength({ min: 2, max: 200 })
-    .withMessage('שם המוצר חייב להיות בין 2-200 תווים')
-    .escape(),
+    .withMessage('שם המוצר חייב להיות בין 2-200 תווים'),
 
-  body('price')
+  body('name_en')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 200 })
+    .withMessage('שם המוצר באנגלית חייב להיות בין 2-200 תווים'),
+
+  body('price.ils')
     .optional()
     .isFloat({ min: 0, max: 1000000 })
-    .withMessage('מחיר חייב להיות מספר חיובי'),
+    .withMessage('מחיר בשקלים חייב להיות מספר חיובי'),
 
-  body('description')
+  body('price.usd')
+    .optional()
+    .isFloat({ min: 0, max: 100000 })
+    .withMessage('מחיר בדולרים חייב להיות מספר חיובי'),
+
+  body('description_he')
     .optional()
     .trim()
     .isLength({ max: 5000 })
     .withMessage('תיאור המוצר יכול להכיל עד 5000 תווים'),
 
-  body('stock')
+  body('stock.quantity')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null) return true; // null מותר ל-dropshipping
+      if (!Number.isInteger(value) || value < 0) {
+        throw new Error('מלאי חייב להיות מספר שלם חיובי או null');
+      }
+      return true;
+    }),
+
+  body('stock.available')
     .optional()
-    .isInt({ min: 0 })
-    .withMessage('מלאי חייב להיות מספר שלם חיובי'),
+    .isBoolean()
+    .withMessage('זמינות חייבת להיות ערך בוליאני'),
+
+  body('stock.trackInventory')
+    .optional()
+    .isBoolean()
+    .withMessage('מעקב מלאי חייב להיות ערך בוליאני'),
+
+  body('images')
+    .optional()
+    .isArray({ max: 10 })
+    .withMessage('ניתן להעלות עד 10 תמונות'),
 
   validate
 ];

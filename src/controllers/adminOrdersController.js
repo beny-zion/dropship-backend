@@ -66,13 +66,24 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       .sort(sortBy)
       .skip(skip)
       .limit(limit)
-      .select('-__v'),
+      .select('-__v')
+      .lean(), // Convert to plain JavaScript objects
     Order.countDocuments(filter)
   ]);
 
+  // Ensure _id is a string for each order
+  const ordersWithStringIds = orders.map(order => ({
+    ...order,
+    _id: order._id.toString(),
+    user: order.user ? {
+      ...order.user,
+      _id: order.user._id.toString()
+    } : null
+  }));
+
   res.json({
     success: true,
-    data: orders,
+    data: ordersWithStringIds,
     pagination: {
       currentPage: page,
       totalPages: Math.ceil(total / limit),
@@ -88,7 +99,8 @@ export const getAllOrders = asyncHandler(async (req, res) => {
 export const getOrderById = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id)
     .populate('user', 'firstName lastName email phone')
-    .populate('items.product', 'name_he asin images');
+    .populate('items.product', 'name_he asin images')
+    .lean();
 
   if (!order) {
     return res.status(404).json({
@@ -97,9 +109,27 @@ export const getOrderById = asyncHandler(async (req, res) => {
     });
   }
 
+  // Convert IDs to strings
+  const orderWithStringIds = {
+    ...order,
+    _id: order._id.toString(),
+    user: order.user ? {
+      ...order.user,
+      _id: order.user._id.toString()
+    } : null,
+    items: order.items?.map(item => ({
+      ...item,
+      _id: item._id?.toString(),
+      product: item.product ? {
+        ...item.product,
+        _id: item.product._id.toString()
+      } : null
+    })) || []
+  };
+
   res.json({
     success: true,
-    data: order
+    data: orderWithStringIds
   });
 });
 

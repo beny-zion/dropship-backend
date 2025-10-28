@@ -115,11 +115,22 @@ export const getRecentOrders = asyncHandler(async (req, res) => {
     .populate('user', 'firstName lastName email')
     .sort({ createdAt: -1 })
     .limit(10)
-    .select('orderNumber status pricing.total createdAt user');
+    .select('orderNumber status pricing.total createdAt user')
+    .lean();
+
+  // Convert IDs to strings
+  const ordersWithStringIds = orders.map(order => ({
+    ...order,
+    _id: order._id.toString(),
+    user: order.user ? {
+      ...order.user,
+      _id: order.user._id.toString()
+    } : null
+  }));
 
   res.json({
     success: true,
-    data: orders
+    data: ordersWithStringIds
   });
 });
 

@@ -43,6 +43,9 @@ cartSchema.pre('save', function(next) {
   next();
 });
 
+// ⚡ Index for fast user cart lookup
+cartSchema.index({ user: 1 });
+
 const Cart = mongoose.model('Cart', cartSchema);
 
 export default Cart;

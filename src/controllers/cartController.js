@@ -1,14 +1,17 @@
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
+import { cacheGet, cacheSet, cacheDel, CACHE_KEYS } from '../utils/cache.js';
 
-// Helper: Calculate cart totals from DB
-const calculateCartTotals = async (cart) => {
+// Helper: Calculate cart totals from populated cart
+// ⚡ IMPORTANT: cart.items.product must be populated before calling this function
+const calculateCartTotals = (cart) => {
   let subtotal = 0;
   const validItems = [];
 
   for (const item of cart.items) {
-    const product = await Product.findById(item.product);
-    
+    // ⭐ item.product is already populated - no DB query needed!
+    const product = item.product;
+
     if (!product || product.status !== 'active' || !product.stock.available) {
       // Skip invalid/unavailable products
       continue;
@@ -47,14 +50,18 @@ const calculateCartTotals = async (cart) => {
 // @access  Private
 export const getCart = async (req, res) => {
   try {
+    const startTime = Date.now();
     let cart = await Cart.findOne({ user: req.user.id }).populate('items.product');
-    
+    console.log(`⏱️ Cart findOne + populate took: ${Date.now() - startTime}ms`);
+
     if (!cart) {
       cart = await Cart.create({ user: req.user.id, items: [] });
     }
 
-    // ⭐ חישוב בזמן אמת
-    const cartWithTotals = await calculateCartTotals(cart);
+    // ⚡ חישוב בזמן אמת (cart כבר populated)
+    const calcStart = Date.now();
+    const cartWithTotals = calculateCartTotals(cart);
+    console.log(`⏱️ Cart calculation took: ${Date.now() - calcStart}ms`);
 
     res.json({
       success: true,
@@ -126,7 +133,7 @@ export const addToCart = async (req, res) => {
     if (existingItemIndex > -1) {
       // Update quantity
       const newQuantity = cart.items[existingItemIndex].quantity + quantity;
-      
+
       if (newQuantity > 10) {
         return res.status(400).json({
           success: false,
@@ -145,8 +152,11 @@ export const addToCart = async (req, res) => {
 
     await cart.save();
 
+    // ⚡ Populate products before calculating totals
+    await cart.populate('items.product');
+
     // Return cart with calculated totals
-    const cartWithTotals = await calculateCartTotals(cart);
+    const cartWithTotals = calculateCartTotals(cart);
 
     res.json({
       success: true,
@@ -217,7 +227,10 @@ export const updateCartItem = async (req, res) => {
     cart.items[itemIndex].quantity = quantity;
     await cart.save();
 
-    const cartWithTotals = await calculateCartTotals(cart);
+    // ⚡ Populate products before calculating totals
+    await cart.populate('items.product');
+
+    const cartWithTotals = calculateCartTotals(cart);
 
     res.json({
       success: true,
@@ -261,7 +274,10 @@ export const removeFromCart = async (req, res) => {
 
     await cart.save();
 
-    const cartWithTotals = await calculateCartTotals(cart);
+    // ⚡ Populate products before calculating totals
+    await cart.populate('items.product');
+
+    const cartWithTotals = calculateCartTotals(cart);
 
     res.json({
       success: true,
