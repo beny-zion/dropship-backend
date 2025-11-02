@@ -90,7 +90,7 @@ router.get(
 // @route   POST /api/admin/products
 router.post(
   '/products',
-  validateProduct,
+  validateProductUpdate, // Use the new validator that supports name_he, price.ils, etc.
   logAdminAction('CREATE_PRODUCT', 'Product'),
   adminProductsController.createProduct
 );
@@ -199,6 +199,14 @@ router.delete(
   validateMongoId,
   logAdminAction('CANCEL_ORDER', 'Order'),
   adminOrdersController.cancelOrder
+);
+
+// @route   PATCH /api/admin/orders/:id/refresh-items
+router.patch(
+  '/orders/:id/refresh-items',
+  validateMongoId,
+  logAdminAction('REFRESH_ORDER_ITEMS', 'Order'),
+  adminOrdersController.refreshOrderItems
 );
 
 // ============================================

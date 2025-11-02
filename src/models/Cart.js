@@ -6,6 +6,12 @@ const cartItemSchema = new mongoose.Schema({
     ref: 'Product',
     required: true
   },
+  variantSku: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: null // null = מוצר ללא ווריאנט
+  },
   quantity: {
     type: Number,
     required: true,

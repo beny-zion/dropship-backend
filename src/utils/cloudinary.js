@@ -45,6 +45,43 @@ export const uploadImage = async (file, folder = process.env.CLOUDINARY_FOLDER) 
 };
 
 /**
+ * העלאת Buffer ל-Cloudinary (מתאים ל-multer memory storage)
+ * @param {Buffer} buffer - Buffer של הקובץ
+ * @param {string} folder - תיקיה ב-Cloudinary (אופציונלי)
+ * @returns {Promise<object>} אובייקט עם URL ופרטים נוספים
+ */
+export const uploadBufferToCloudinary = (buffer, folder = process.env.CLOUDINARY_FOLDER) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: folder,
+        resource_type: 'auto',
+        quality: 'auto:good',
+        transformation: [
+          { width: 1920, height: 1920, crop: 'limit' },
+          { quality: 'auto:good' },
+        ]
+      },
+      (error, result) => {
+        if (error) {
+          console.error('שגיאה בהעלאת buffer ל-Cloudinary:', error);
+          return reject(new Error('שגיאה בהעלאת הקובץ'));
+        }
+        resolve({
+          url: result.secure_url,
+          publicId: result.public_id,
+          width: result.width,
+          height: result.height,
+          format: result.format,
+          resourceType: result.resource_type
+        });
+      }
+    );
+    uploadStream.end(buffer);
+  });
+};
+
+/**
  * מחיקת תמונה מ-Cloudinary
  * @param {string} publicId - מזהה ציבורי של התמונה
  * @returns {Promise<object>}
@@ -58,6 +95,9 @@ export const deleteImage = async (publicId) => {
     throw new Error('שגיאה במחיקת התמונה');
   }
 };
+
+// Alias for deleteImage
+export const deleteFromCloudinary = deleteImage;
 
 /**
  * מחיקת מספר תמונות בבת אחת

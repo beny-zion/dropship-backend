@@ -1,4 +1,5 @@
 import Product from '../models/Product.js';
+import Category from '../models/Category.js';
 import mongoose from 'mongoose';
 import { cacheGet, cacheSet, CACHE_KEYS } from '../utils/cache.js';
 
@@ -34,9 +35,30 @@ export const getProducts = async (req, res) => {
     // בניית query
     const query = { status: 'active' };
 
-    // פילטר לפי קטגוריה
+    // פילטר לפי קטגוריה - תמיכה ב-slug או ID
     if (category && category !== 'all') {
-      query.category = category;
+      // בדוק אם זה ObjectId תקין
+      if (mongoose.Types.ObjectId.isValid(category) && category.length === 24) {
+        query.category = category;
+      } else {
+        // אם זה לא ID, חפש לפי slug
+        const categoryDoc = await Category.findOne({ slug: category }).lean();
+        if (categoryDoc) {
+          query.category = categoryDoc._id;
+        } else {
+          // אם לא נמצאה קטגוריה, החזר תוצאה ריקה
+          return res.json({
+            success: true,
+            data: [],
+            pagination: {
+              page: parseInt(page),
+              limit: parseInt(limit),
+              total: 0,
+              pages: 0
+            }
+          });
+        }
+      }
     }
 
     // פילטר לפי מחיר
@@ -83,6 +105,7 @@ export const getProducts = async (req, res) => {
     // ביצוע query - מסננים שדות רגישים ומידע אמזון
     const [products, total] = await Promise.all([
       Product.find(query)
+        .populate('category', 'name slug styling') // Populate category with name, slug, and styling
         .sort(sortOption)
         .limit(limitNum)
         .skip(skip)

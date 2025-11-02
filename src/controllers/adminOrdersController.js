@@ -109,6 +109,13 @@ export const getOrderById = asyncHandler(async (req, res) => {
     });
   }
 
+  // Debug: בואו נראה מה יש ב-order.items לפני המיפוי
+  console.log('🔍 Order items before mapping:', order.items?.map(item => ({
+    supplierLink: item.supplierLink,
+    supplierName: item.supplierName,
+    name: item.name
+  })));
+
   // Convert IDs to strings
   const orderWithStringIds = {
     ...order,
@@ -117,15 +124,31 @@ export const getOrderById = asyncHandler(async (req, res) => {
       ...order.user,
       _id: order.user._id.toString()
     } : null,
-    items: order.items?.map(item => ({
-      ...item,
-      _id: item._id?.toString(),
-      product: item.product ? {
-        ...item.product,
-        _id: item.product._id.toString()
-      } : null
-    })) || []
+    items: order.items?.map(item => {
+      // שמירת כל השדות של item (כולל supplierLink, supplierName)
+      const mappedItem = {
+        ...item,
+        _id: item._id?.toString()
+      };
+
+      // רק אם יש product מ-populate, נעדכן אותו
+      if (item.product) {
+        mappedItem.product = {
+          ...item.product,
+          _id: item.product._id.toString()
+        };
+      }
+
+      return mappedItem;
+    }) || []
   };
+
+  // Debug: בואו נראה מה יש אחרי המיפוי
+  console.log('✅ Order items after mapping:', orderWithStringIds.items?.map(item => ({
+    supplierLink: item.supplierLink,
+    supplierName: item.supplierName,
+    name: item.name
+  })));
 
   res.json({
     success: true,
@@ -312,6 +335,61 @@ export const cancelOrder = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     message: 'ההזמנה בוטלה בהצלחה',
+    data: order
+  });
+});
+
+// @desc    Refresh order items with latest product data
+// @route   PATCH /api/admin/orders/:id/refresh-items
+// @access  Private/Admin
+export const refreshOrderItems = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: 'הזמנה לא נמצאה'
+    });
+  }
+
+  // Import Product model
+  const Product = (await import('../models/Product.js')).default;
+
+  // עבור כל פריט בהזמנה, עדכן את המידע מהמוצר
+  const updatedItems = [];
+
+  for (const item of order.items) {
+    const product = await Product.findById(item.product);
+
+    if (!product) {
+      // אם המוצר לא נמצא, שמור את הפריט כמו שהוא
+      updatedItems.push(item);
+      continue;
+    }
+
+    let supplierLink = product.links?.supplierUrl || product.links?.amazon || null;
+
+    // אם יש ווריאנט, בדוק אם יש לו לינק ספציפי
+    if (item.variantSku) {
+      const variant = product.variants?.find(v => v.sku === item.variantSku);
+      if (variant?.supplierLink) {
+        supplierLink = variant.supplierLink;
+      }
+    }
+
+    updatedItems.push({
+      ...item.toObject(),
+      supplierLink: supplierLink,
+      supplierName: product.supplier?.name || 'Amazon'
+    });
+  }
+
+  order.items = updatedItems;
+  await order.save();
+
+  res.json({
+    success: true,
+    message: 'פרטי המוצרים בהזמנה עודכנו',
     data: order
   });
 });

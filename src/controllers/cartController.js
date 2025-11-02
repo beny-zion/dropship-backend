@@ -12,36 +12,69 @@ const calculateCartTotals = (cart) => {
     // ⭐ item.product is already populated - no DB query needed!
     const product = item.product;
 
-    if (!product || product.status !== 'active' || !product.stock.available) {
+    if (!product || product.status !== 'active') {
       // Skip invalid/unavailable products
+      continue;
+    }
+
+    // אם יש ווריאנט, בדוק את הזמינות שלו
+    let isAvailable = product.stock.available;
+    let itemPrice = product.price.ils;
+    let variantInfo = null;
+
+    if (item.variantSku) {
+      const variant = product.variants?.find(v => v.sku === item.variantSku);
+      if (!variant || !variant.stock.available) {
+        continue; // דלג על ווריאנט לא זמין
+      }
+      // הוסף עלות נוספת של הווריאנט
+      itemPrice += (variant.additionalCost?.ils || 0);
+      variantInfo = {
+        sku: variant.sku,
+        color: variant.color,
+        size: variant.size
+      };
+    }
+
+    if (!isAvailable) {
       continue;
     }
 
     validItems.push({
       ...item.toObject(),
       product: product,
-      price: product.price.ils, // ⭐ מחיר מה-DB!
-      subtotalPrice: product.price.ils * item.quantity
+      variant: variantInfo,
+      price: itemPrice, // ⭐ מחיר בסיסי + עלות נוספת של ווריאנט
+      subtotalPrice: itemPrice * item.quantity
     });
 
-    subtotal += product.price.ils * item.quantity;
+    subtotal += itemPrice * item.quantity;
   }
 
-  const taxRate = parseFloat(process.env.TAX_RATE) || 0.17;
-  const tax = subtotal * taxRate;
+  const taxRate = parseFloat(process.env.TAX_RATE) || 0.18;
+
+  // חישוב מע"מ כחלק מהמחיר (Tax-Inclusive)
+  // המחיר כבר כולל מע"מ, אנחנו רק מחשבים כמה זה
+  // נוסחה: מע"מ = מחיר × (18 / 118)
+  const tax = subtotal * (taxRate / (1 + taxRate));
+
+  // מחיר ללא מע"מ (לצורכי תצוגה בלבד)
+  const subtotalWithoutVat = subtotal - tax;
 
   const freeShippingThreshold = parseFloat(process.env.FREE_SHIPPING_THRESHOLD) || 200;
   const standardShippingCost = parseFloat(process.env.STANDARD_SHIPPING_COST) || 30;
   const shipping = subtotal >= freeShippingThreshold ? 0 : standardShippingCost;
 
-  const total = subtotal + tax + shipping;
+  // סה"כ = מחיר (כבר כולל מע"מ) + משלוח
+  const total = subtotal + shipping;
 
   return {
     items: validItems,
-    subtotal,
-    tax,
-    shipping,
-    total
+    subtotal,              // מחיר כולל מע"מ
+    subtotalWithoutVat,    // מחיר ללא מע"מ
+    tax,                   // סכום המע"מ
+    shipping,              // עלות משלוח
+    total                  // סה"כ (מחיר כולל מע"מ + משלוח)
   };
 };
 
@@ -71,6 +104,7 @@ export const getCart = async (req, res) => {
         items: cartWithTotals.items,
         pricing: {
           subtotal: cartWithTotals.subtotal,
+          subtotalWithoutVat: cartWithTotals.subtotalWithoutVat,
           tax: cartWithTotals.tax,
           shipping: cartWithTotals.shipping,
           total: cartWithTotals.total
@@ -93,7 +127,7 @@ export const getCart = async (req, res) => {
 // @access  Private
 export const addToCart = async (req, res) => {
   try {
-    const { productId, quantity = 1 } = req.body;
+    const { productId, variantSku = null, quantity = 1 } = req.body;
 
     // ⭐ Validate product from DB
     const product = await Product.findById(productId);
@@ -111,12 +145,29 @@ export const addToCart = async (req, res) => {
       });
     }
 
-    // ⭐ תיקון: stock.available במקום stock.inStock
-    if (!product.stock.available) {
-      return res.status(400).json({
-        success: false,
-        message: 'מוצר אזל מהמלאי'
-      });
+    // בדיקת זמינות - תלוי אם יש ווריאנט או לא
+    if (variantSku) {
+      const variant = product.variants?.find(v => v.sku === variantSku);
+      if (!variant) {
+        return res.status(404).json({
+          success: false,
+          message: 'ווריאנט לא נמצא'
+        });
+      }
+      if (!variant.stock.available) {
+        return res.status(400).json({
+          success: false,
+          message: 'ווריאנט זה אזל מהמלאי'
+        });
+      }
+    } else {
+      // ⭐ תיקון: stock.available במקום stock.inStock
+      if (!product.stock.available) {
+        return res.status(400).json({
+          success: false,
+          message: 'מוצר אזל מהמלאי'
+        });
+      }
     }
 
     // Get or create cart
@@ -125,19 +176,20 @@ export const addToCart = async (req, res) => {
       cart = await Cart.create({ user: req.user.id, items: [] });
     }
 
-    // Check if product already in cart
+    // Check if same product + variant already in cart
     const existingItemIndex = cart.items.findIndex(
-      item => item.product.toString() === productId
+      item => item.product.toString() === productId &&
+              (item.variantSku || null) === (variantSku || null)
     );
 
     if (existingItemIndex > -1) {
       // Update quantity
       const newQuantity = cart.items[existingItemIndex].quantity + quantity;
 
-      if (newQuantity > 10) {
+      if (newQuantity > 2) {
         return res.status(400).json({
           success: false,
-          message: 'כמות מקסימלית היא 10'
+          message: 'כמות מקסימלית היא 2 יחידות למוצר'
         });
       }
 
@@ -146,6 +198,7 @@ export const addToCart = async (req, res) => {
       // Add new item (without price!)
       cart.items.push({
         product: productId,
+        variantSku: variantSku,
         quantity
       });
     }
@@ -166,6 +219,7 @@ export const addToCart = async (req, res) => {
         items: cartWithTotals.items,
         pricing: {
           subtotal: cartWithTotals.subtotal,
+          subtotalWithoutVat: cartWithTotals.subtotalWithoutVat,
           tax: cartWithTotals.tax,
           shipping: cartWithTotals.shipping,
           total: cartWithTotals.total
@@ -189,10 +243,10 @@ export const updateCartItem = async (req, res) => {
     const { productId } = req.params;
     const { quantity } = req.body;
 
-    if (quantity < 1 || quantity > 10) {
+    if (quantity < 1 || quantity > 2) {
       return res.status(400).json({
         success: false,
-        message: 'כמות לא חוקית'
+        message: 'כמות חייבת להיות בין 1 ל-2'
       });
     }
 
@@ -240,6 +294,7 @@ export const updateCartItem = async (req, res) => {
         items: cartWithTotals.items,
         pricing: {
           subtotal: cartWithTotals.subtotal,
+          subtotalWithoutVat: cartWithTotals.subtotalWithoutVat,
           tax: cartWithTotals.tax,
           shipping: cartWithTotals.shipping,
           total: cartWithTotals.total
@@ -261,6 +316,7 @@ export const updateCartItem = async (req, res) => {
 export const removeFromCart = async (req, res) => {
   try {
     const { productId } = req.params;
+    const { variantSku = null } = req.query; // ווריאנט מגיע ב-query parameter
 
     const cart = await Cart.findOne({ user: req.user.id });
     if (!cart) {
@@ -270,7 +326,11 @@ export const removeFromCart = async (req, res) => {
       });
     }
 
-    cart.items = cart.items.filter(item => item.product.toString() !== productId);
+    // סינון - הסר את המוצר והווריאנט הספציפי
+    cart.items = cart.items.filter(item =>
+      !(item.product.toString() === productId &&
+        (item.variantSku || null) === (variantSku || null))
+    );
 
     await cart.save();
 
@@ -287,6 +347,7 @@ export const removeFromCart = async (req, res) => {
         items: cartWithTotals.items,
         pricing: {
           subtotal: cartWithTotals.subtotal,
+          subtotalWithoutVat: cartWithTotals.subtotalWithoutVat,
           tax: cartWithTotals.tax,
           shipping: cartWithTotals.shipping,
           total: cartWithTotals.total

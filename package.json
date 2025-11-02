@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "seed": "node scripts/seedProducts.js"
+    "seed": "node scripts/seedProducts.js",
+    "seed:categories": "node scripts/seedCategories.js",
+    "migrate:categories": "node scripts/migrateProductCategories.js"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
+    "multer": "^2.0.2",
     "node-cache": "^5.1.2",
     "slugify": "^1.6.6"
   },

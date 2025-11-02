@@ -6,6 +6,17 @@ const orderItemSchema = new mongoose.Schema({
     ref: 'Product',
     required: true
   },
+  variantSku: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: null // null = מוצר ללא ווריאנט
+  },
+  variantDetails: {
+    color: String,
+    size: String,
+    sku: String
+  },
   quantity: {
     type: Number,
     required: true,
@@ -20,7 +31,9 @@ const orderItemSchema = new mongoose.Schema({
     required: true
   },
   image: String,
-  asin: String
+  asin: String,
+  supplierLink: String, // קישור לרכישה אצל הספק
+  supplierName: String // שם הספק (Amazon, Karl Lagerfeld, וכו')
 }, { _id: false });
 
 const shippingAddressSchema = new mongoose.Schema({

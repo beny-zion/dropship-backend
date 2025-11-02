@@ -59,9 +59,17 @@ export const validateProduct = [
     .isArray({ max: 10 })
     .withMessage('ניתן להעלות עד 10 תמונות'),
 
-  body('images.*')
+  body('images.*.url')
     .optional()
-    .isURL()
+    .custom((value) => {
+      // Allow Cloudinary URLs and other external URLs with query parameters
+      try {
+        new URL(value);
+        return true;
+      } catch {
+        throw new Error('כתובת תמונה לא תקינה');
+      }
+    })
     .withMessage('כתובת תמונה לא תקינה'),
 
   validate
@@ -108,10 +116,10 @@ export const validateProductUpdate = [
     .withMessage('שם המוצר חייב להיות בין 2-200 תווים'),
 
   body('name_en')
-    .optional()
+    .optional({ values: 'falsy' }) // Allow empty string
     .trim()
-    .isLength({ min: 2, max: 200 })
-    .withMessage('שם המוצר באנגלית חייב להיות בין 2-200 תווים'),
+    .isLength({ min: 0, max: 200 })
+    .withMessage('שם המוצר באנגלית יכול להכיל עד 200 תווים'),
 
   body('price.ils')
     .optional()
@@ -153,6 +161,64 @@ export const validateProductUpdate = [
     .optional()
     .isArray({ max: 10 })
     .withMessage('ניתן להעלות עד 10 תמונות'),
+
+  body('variants')
+    .optional()
+    .isArray({ max: 100 })
+    .withMessage('ניתן להוסיף עד 100 ווריאנטים'),
+
+  body('variants.*.sku')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('SKU חייב להיות בין 1-100 תווים'),
+
+  body('variants.*.color')
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('צבע יכול להכיל עד 50 תווים'),
+
+  body('variants.*.size')
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('מידה יכולה להכיל עד 50 תווים'),
+
+  body('variants.*.stock.quantity')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null) return true;
+      if (!Number.isInteger(value) || value < 0) {
+        throw new Error('כמות במלאי חייבת להיות מספר שלם חיובי או null');
+      }
+      return true;
+    }),
+
+  body('variants.*.additionalCost.ils')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('עלות נוספת בשקלים חייבת להיות מספר חיובי'),
+
+  body('variants.*.additionalCost.usd')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('עלות נוספת בדולרים חייבת להיות מספר חיובי'),
+
+  body('asin')
+    .optional({ values: 'falsy' }) // Allow empty string or null
+    .trim()
+    .custom((value) => {
+      if (!value) return true; // Empty is OK
+      if (value.length === 10) return true; // Exactly 10 chars is OK
+      throw new Error('ASIN חייב להיות בדיוק 10 תווים');
+    }),
+
+  body('supplier.name')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('שם הספק יכול להכיל עד 100 תווים'),
 
   validate
 ];

@@ -5,8 +5,9 @@ const productSchema = new mongoose.Schema({
   // מידע בסיסי
   asin: {
     type: String,
-    required: [true, 'נדרש ASIN של המוצר'],
+    required: false, // אופציונלי - רק למוצרי אמזון
     unique: true,
+    sparse: true, // מאפשר מספר מוצרים בלי ASIN
     uppercase: true,
     trim: true
   },
@@ -155,8 +156,14 @@ const productSchema = new mongoose.Schema({
   
   // קטגוריה ותגיות
   category: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null
+  },
+
+  // שדה מחרוזת ישן לתאימות לאחור (deprecated)
+  categoryLegacy: {
     type: String,
-    required: [true, 'נדרשת קטגוריה'],
     enum: [
       'electronics',
       'fashion',
@@ -178,7 +185,7 @@ const productSchema = new mongoose.Schema({
     lowercase: true
   }],
   
-  // תמונות
+  // תמונות (תמונות כלליות של המוצר)
   images: [{
     url: {
       type: String,
@@ -190,13 +197,68 @@ const productSchema = new mongoose.Schema({
       default: false
     }
   }],
-  
-  // פרטים טכניים
+
+  // ווריאנטים (צבעים, מידות, וכו')
+  variants: [{
+    sku: {
+      type: String,
+      required: true,
+      unique: true,
+      sparse: true,
+      trim: true,
+      uppercase: true
+    },
+    color: {
+      type: String,
+      trim: true
+    },
+    size: {
+      type: String,
+      trim: true
+    },
+    images: [{
+      url: {
+        type: String,
+        required: true
+      },
+      alt: String,
+      isPrimary: {
+        type: Boolean,
+        default: false
+      }
+    }],
+    stock: {
+      available: {
+        type: Boolean,
+        default: true
+      },
+      quantity: {
+        type: Number,
+        default: null
+      }
+    },
+    additionalCost: {
+      usd: {
+        type: Number,
+        default: 0
+      },
+      ils: {
+        type: Number,
+        default: 0
+      }
+    },
+    supplierLink: {
+      type: String,
+      trim: true
+    },
+    barcode: String,
+    weight: String
+  }],
+
+  // פרטים טכניים (כלליים למוצר)
   specifications: {
     brand: String,
     model: String,
-    color: String,
-    size: String,
     weight: String,
     dimensions: String,
     material: String
@@ -233,7 +295,18 @@ const productSchema = new mongoose.Schema({
       type: String,
       required: false
     },
-    affiliateUrl: String
+    affiliateUrl: String,
+    supplierUrl: String // קישור כללי לספק (לא אמזון)
+  },
+
+  // פרטי ספק
+  supplier: {
+    name: {
+      type: String,
+      default: 'Amazon'
+    },
+    url: String,
+    notes: String // הערות על הספק, תנאי תשלום, זמן אספקה וכו'
   },
   
   // סטטוס
@@ -281,11 +354,14 @@ const productSchema = new mongoose.Schema({
 // יצירת slug אוטומטית
 productSchema.pre('save', function(next) {
   if (this.isModified('name_he')) {
-    this.slug = slugify(this.name_he, {
+    const baseSlug = slugify(this.name_he, {
       lower: true,
       strict: true,
       locale: 'he'
-    }) + '-' + this.asin.toLowerCase();
+    });
+    // אם יש ASIN, השתמש בו. אחרת, השתמש ב-_id
+    const uniquePart = this.asin ? this.asin.toLowerCase() : this._id.toString().slice(-6);
+    this.slug = `${baseSlug}-${uniquePart}`;
   }
   next();
 });

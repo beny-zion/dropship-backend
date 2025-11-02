@@ -16,7 +16,28 @@ const SENSITIVE_FIELDS = [
 ];
 
 /**
- * מסנן שדות רגישים מאובייקט
+ * המרת ObjectId למחרזת (למניעת Buffer serialization)
+ * @param {*} value - הערך להמרה
+ */
+const convertObjectIdToString = (value) => {
+  if (!value) return value;
+
+  // אם זה ObjectId של MongoDB - המר למחרזת
+  if (value.constructor && value.constructor.name === 'ObjectId') {
+    return value.toString();
+  }
+
+  // אם זה Buffer (ObjectId שעבר serialization) - המר למחרזת hex
+  if (value.buffer && typeof value.buffer === 'object') {
+    const buffer = Object.values(value.buffer);
+    return buffer.map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  return value;
+};
+
+/**
+ * מסנן שדות רגישים מאובייקט + ממיר ObjectId למחרזות
  * @param {Object} obj - האובייקט לסינון
  * @param {Array} fieldsToRemove - רשימת שדות להסרה
  * @param {WeakSet} seen - מעקב אחרי אובייקטים שכבר עברנו (למניעת circular references)
@@ -42,6 +63,23 @@ const sanitizeObject = (obj, fieldsToRemove = SENSITIVE_FIELDS, seen = new WeakS
 
   // יצירת עותק של האובייקט
   const sanitized = { ...plainObj };
+
+  // המרת כל השדות שהם ObjectId ל-string
+  Object.keys(sanitized).forEach(key => {
+    const value = sanitized[key];
+
+    // בדיקה אם זה ObjectId או Buffer
+    if (value && typeof value === 'object') {
+      // אם זה ObjectId
+      if (value.constructor && value.constructor.name === 'ObjectId') {
+        sanitized[key] = value.toString();
+      }
+      // אם זה Buffer שמייצג ObjectId (יש לו מאפיין buffer)
+      else if (value.buffer && typeof value.buffer === 'object') {
+        sanitized[key] = convertObjectIdToString(value);
+      }
+    }
+  });
 
   // מחיקת שדות רגישים
   fieldsToRemove.forEach(field => {
@@ -76,15 +114,20 @@ const sanitizeObject = (obj, fieldsToRemove = SENSITIVE_FIELDS, seen = new WeakS
  * משמש רק בנתיבים ציבוריים (לא admin)
  */
 export const sanitizePublicResponse = (req, res, next) => {
+  // בודקים אם זה נתיב admin - אם כן, לא נחיל את הסינון
+  const isAdminRoute = req.path.startsWith('/admin') || req.originalUrl.includes('/api/admin');
+
+  // אם זה נתיב admin, פשוט תמשיך בלי סינון
+  if (isAdminRoute) {
+    return next();
+  }
+
   // שמירת הפונקציה המקורית
   const originalJson = res.json.bind(res);
 
-  // החלפה לפונקציה מסננת
+  // החלפה לפונקציה מסננת (רק לנתיבים ציבוריים)
   res.json = function (data) {
-    // בודקים אם זה נתיב ציבורי (לא admin)
-    const isPublicRoute = !req.path.includes('/admin');
-
-    if (isPublicRoute && data && data.data) {
+    if (data && data.data) {
       // סינון הנתונים
       data.data = sanitizeObject(data.data);
     }

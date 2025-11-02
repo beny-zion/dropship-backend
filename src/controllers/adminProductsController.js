@@ -1,6 +1,7 @@
 // controllers/adminProductsController.js - Week 5: Products Management for Admin
 
 import Product from '../models/Product.js';
+import Category from '../models/Category.js';
 import Order from '../models/Order.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
@@ -57,6 +58,7 @@ export const getAllProducts = asyncHandler(async (req, res) => {
   // Execute queries in parallel
   const [products, total] = await Promise.all([
     Product.find(filter)
+      .populate('category', 'name slug')
       .sort(sortBy)
       .skip(skip)
       .limit(limit)
@@ -87,7 +89,9 @@ export const getAllProducts = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/products/:id
 // @access  Private/Admin
 export const getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id).lean();
+  const product = await Product.findById(req.params.id)
+    .populate('category', 'name slug')
+    .lean();
 
   if (!product) {
     return res.status(404).json({
@@ -140,14 +144,52 @@ export const getProductById = asyncHandler(async (req, res) => {
 // @route   POST /api/admin/products
 // @access  Private/Admin
 export const createProduct = asyncHandler(async (req, res) => {
-  // Check if ASIN already exists
-  const existingProduct = await Product.findOne({ asin: req.body.asin });
-  
-  if (existingProduct) {
-    return res.status(400).json({
-      success: false,
-      message: 'מוצר עם ASIN זה כבר קיים במערכת'
+  // Check if category exists in the new category system
+  if (req.body.category) {
+    const category = await Category.findById(req.body.category);
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        message: 'הקטגוריה שנבחרה לא קיימת במערכת'
+      });
+    }
+  }
+
+  // Check if ASIN already exists (רק אם סופק ASIN)
+  if (req.body.asin) {
+    const existingProduct = await Product.findOne({ asin: req.body.asin });
+
+    if (existingProduct) {
+      return res.status(400).json({
+        success: false,
+        message: 'מוצר עם ASIN זה כבר קיים במערכת'
+      });
+    }
+  }
+
+  // בדיקת SKU ייחודיים בווריאנטים
+  if (req.body.variants && req.body.variants.length > 0) {
+    const skus = req.body.variants.map(v => v.sku).filter(Boolean);
+    const uniqueSkus = new Set(skus);
+
+    if (skus.length !== uniqueSkus.size) {
+      return res.status(400).json({
+        success: false,
+        message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
+      });
+    }
+
+    // בדיקה שאין SKU קיים במוצרים אחרים
+    const existingVariants = await Product.findOne({
+      'variants.sku': { $in: skus }
     });
+
+    if (existingVariants) {
+      return res.status(400).json({
+        success: false,
+        message: 'אחד או יותר מה-SKU כבר קיימים במערכת'
+      });
+    }
   }
 
   const product = await Product.create(req.body);
@@ -172,6 +214,17 @@ export const updateProduct = asyncHandler(async (req, res) => {
     });
   }
 
+  // Check if category exists in the new category system
+  if (req.body.category && req.body.category !== product.category?.toString()) {
+    const category = await Category.findById(req.body.category);
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        message: 'הקטגוריה שנבחרה לא קיימת במערכת'
+      });
+    }
+  }
+
   // If updating ASIN, check if new ASIN exists
   if (req.body.asin && req.body.asin !== product.asin) {
     const existingProduct = await Product.findOne({ asin: req.body.asin });
@@ -179,6 +232,32 @@ export const updateProduct = asyncHandler(async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'ASIN זה כבר קיים במערכת'
+      });
+    }
+  }
+
+  // בדיקת SKU ייחודיים בווריאנטים (אם מעדכנים ווריאנטים)
+  if (req.body.variants && req.body.variants.length > 0) {
+    const skus = req.body.variants.map(v => v.sku).filter(Boolean);
+    const uniqueSkus = new Set(skus);
+
+    if (skus.length !== uniqueSkus.size) {
+      return res.status(400).json({
+        success: false,
+        message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
+      });
+    }
+
+    // בדיקה שאין SKU קיים במוצרים אחרים (למעט המוצר הנוכחי)
+    const existingVariants = await Product.findOne({
+      _id: { $ne: req.params.id },
+      'variants.sku': { $in: skus }
+    });
+
+    if (existingVariants) {
+      return res.status(400).json({
+        success: false,
+        message: 'אחד או יותר מה-SKU כבר קיימים במוצר אחר'
       });
     }
   }

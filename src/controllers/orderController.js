@@ -116,7 +116,7 @@ export const createOrder = async (req, res) => {
 
     for (const item of items) {
       const product = await Product.findById(item.product);
-      
+
       if (!product) {
         return res.status(404).json({
           success: false,
@@ -124,46 +124,89 @@ export const createOrder = async (req, res) => {
         });
       }
 
-      // Check if product is available
-      if (!product.stock.available) {
+      let itemPrice = product.price.ils;
+      let variantDetails = null;
+      let supplierLink = product.links?.supplierUrl || product.links?.amazon || null;
+      let imageUrl = '';
+
+      // בדיקת ווריאנט אם קיים
+      if (item.variantSku) {
+        const variant = product.variants?.find(v => v.sku === item.variantSku);
+
+        if (!variant) {
+          return res.status(404).json({
+            success: false,
+            message: `ווריאנט ${item.variantSku} לא נמצא במוצר ${product.name_he}`
+          });
+        }
+
+        if (!variant.stock.available) {
+          return res.status(400).json({
+            success: false,
+            message: `ווריאנט ${variant.color || ''} ${variant.size || ''} של ${product.name_he} אינו זמין במלאי`
+          });
+        }
+
+        // הוסף עלות נוספת של הווריאנט
+        itemPrice += (variant.additionalCost?.ils || 0);
+
+        variantDetails = {
+          color: variant.color,
+          size: variant.size,
+          sku: variant.sku
+        };
+
+        // קישור ספציפי לווריאנט (אם קיים)
+        if (variant.supplierLink) {
+          supplierLink = variant.supplierLink;
+        }
+
+        // תמונה ראשית של הווריאנט
+        const variantPrimaryImage = variant.images?.find(img => img.isPrimary);
+        imageUrl = variantPrimaryImage?.url || variant.images?.[0]?.url || '';
+      }
+
+      // אם אין תמונה מהווריאנט, קח תמונה מהמוצר הכללי
+      if (!imageUrl) {
+        const primaryImage = product.images?.find(img => img.isPrimary);
+        imageUrl = primaryImage?.url || product.images?.[0]?.url || '';
+      }
+
+      // בדיקת זמינות כללית (אם אין ווריאנט)
+      if (!item.variantSku && !product.stock.available) {
         return res.status(400).json({
           success: false,
           message: `מוצר ${product.name_he} אינו זמין במלאי`
         });
       }
 
-      // Check if sufficient quantity exists
-      if (product.stock.quantity < item.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `כמות לא מספקת במלאי עבור ${product.name_he}. זמין: ${product.stock.quantity}, מבוקש: ${item.quantity}`
-        });
-      }
-
-      const itemTotal = product.price.ils * item.quantity;
+      const itemTotal = itemPrice * item.quantity;
       subtotal += itemTotal;
-
-      // Get primary image or first image
-      const primaryImage = product.images?.find(img => img.isPrimary);
-      const imageUrl = primaryImage?.url || product.images?.[0]?.url || '';
 
       orderItems.push({
         product: product._id,
+        variantSku: item.variantSku || null,
+        variantDetails: variantDetails,
         name: product.name_he,
         quantity: item.quantity,
-        price: product.price.ils,
-        image: imageUrl
+        price: itemPrice,
+        image: imageUrl,
+        asin: product.asin || null,
+        supplierLink: supplierLink,
+        supplierName: product.supplier?.name || 'Amazon'
       });
     }
 
     // Calculate shipping
     const shippingCost = subtotal >= 200 ? 0 : 20;
-    
-    // Calculate tax
-    const tax = subtotal * 0.17; // 17% VAT
-    
-    // Calculate total
-    const totalAmount = subtotal + shippingCost + tax;
+
+    // Calculate tax (Tax-Inclusive - המחיר כבר כולל מע"מ)
+    // נוסחה: מע"מ = מחיר × (18 / 118)
+    const taxRate = 0.18;
+    const tax = subtotal * (taxRate / (1 + taxRate));
+
+    // Calculate total (מחיר כבר כולל מע"מ, רק מוסיפים משלוח)
+    const totalAmount = subtotal + shippingCost;
 
     // Generate order number
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
