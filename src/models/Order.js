@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import OrderStatus from './OrderStatus.js';
 
 const orderItemSchema = new mongoose.Schema({
   product: {
@@ -108,8 +109,28 @@ const orderSchema = new mongoose.Schema({
   
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
-    default: 'pending'
+    required: true,
+    default: 'pending',
+    validate: {
+      validator: async function(value) {
+        // Allow the default value 'pending' always
+        if (value === 'pending') return true;
+
+        // Check if status exists in OrderStatus collection
+        const statusExists = await OrderStatus.findOne({
+          key: value,
+          isActive: true
+        });
+        return !!statusExists;
+      },
+      message: props => `סטטוס '${props.value}' לא קיים במערכת`
+    }
+  },
+
+  creditHold: {
+    amount: Number,           // סכום המסגרת הנעולה
+    heldAt: Date,            // מתי נעל
+    releasedAt: Date         // מתי שוחרר
   },
   
   payment: {
@@ -141,25 +162,54 @@ const orderSchema = new mongoose.Schema({
   },
   
   notes: String,
-  
+
   timeline: [{
     status: String,
     message: String,
     timestamp: {
       type: Date,
-      default: Date.now
+      default: () => new Date()
     }
-  }],
-  
-  createdAt: {
-    type: Date,
-    default: Date.now
+  }]
+}, {
+  timestamps: true,
+  toJSON: {
+    virtuals: true,
+    transform: function(doc, ret) {
+      // Always use _id timestamp as fallback for all dates
+      const fallbackDate = doc._id.getTimestamp().toISOString();
+
+      // Fix createdAt
+      if (doc.createdAt instanceof Date) {
+        ret.createdAt = doc.createdAt.toISOString();
+      } else {
+        ret.createdAt = fallbackDate;
+      }
+
+      // Fix updatedAt
+      if (doc.updatedAt instanceof Date) {
+        ret.updatedAt = doc.updatedAt.toISOString();
+      } else {
+        ret.updatedAt = fallbackDate;
+      }
+
+      // Fix timeline timestamps
+      if (ret.timeline && Array.isArray(ret.timeline)) {
+        ret.timeline = ret.timeline.map((item, index) => {
+          const docItem = doc.timeline && doc.timeline[index];
+          if (docItem && docItem.timestamp instanceof Date) {
+            item.timestamp = docItem.timestamp.toISOString();
+          } else {
+            item.timestamp = fallbackDate;
+          }
+          return item;
+        });
+      }
+
+      return ret;
+    }
   },
-  
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+  toObject: { virtuals: true }
 });
 
 // Add initial timeline entry
@@ -167,10 +217,10 @@ orderSchema.pre('save', function(next) {
   if (this.isNew) {
     this.timeline.push({
       status: 'pending',
-      message: 'ההזמנה התקבלה'
+      message: 'ההזמנה התקבלה',
+      timestamp: new Date()
     });
   }
-  this.updatedAt = Date.now();
   next();
 });
 

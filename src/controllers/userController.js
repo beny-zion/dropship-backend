@@ -8,7 +8,7 @@ import Order from '../models/Order.js';
 // @access  Private
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await User.findById(req.user._id).select('-password');
     
     if (!user) {
       return res.status(404).json({
@@ -25,10 +25,18 @@ export const getProfile = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
 
+    // Convert user to plain object with proper date serialization
+    const userObj = user.toObject({ flattenMaps: true });
+
     res.json({
       success: true,
       data: {
-        user,
+        user: {
+          ...userObj,
+          createdAt: user.createdAt?.toISOString(),
+          updatedAt: user.updatedAt?.toISOString(),
+          lastActive: user.lastActive?.toISOString()
+        },
         stats: {
           totalOrders,
           totalSpent: totalSpentResult[0]?.total || 0
@@ -75,7 +83,7 @@ export const updateProfile = async (req, res) => {
     }
 
     const user = await User.findByIdAndUpdate(
-      req.user.id,
+      req.user._id,
       updates,
       {
         new: true,
@@ -127,7 +135,7 @@ export const changePassword = async (req, res) => {
     }
 
     // Get user with password
-    const user = await User.findById(req.user.id).select('+password');
+    const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
       return res.status(404).json({
@@ -177,7 +185,7 @@ export const deleteAccount = async (req, res) => {
     }
 
     // Get user with password
-    const user = await User.findById(req.user.id).select('+password');
+    const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
       return res.status(404).json({
@@ -219,7 +227,7 @@ export const updatePreferences = async (req, res) => {
   try {
     const { language, currency, notifications } = req.body;
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({

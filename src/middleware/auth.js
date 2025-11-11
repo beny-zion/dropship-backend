@@ -6,7 +6,12 @@ export const auth = async (req, res, next) => {
   try {
     let token;
 
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    // 🍪 Try to get token from HttpOnly cookie first (most secure)
+    if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+    // Fallback: Check Authorization header for backward compatibility
+    else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
 

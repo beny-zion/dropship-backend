@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 
 import connectDB from './config/db.js';
 import { generalRateLimiter } from './middleware/rateLimiter.js';
@@ -20,6 +21,8 @@ import userRoutes from './routes/userRoutes.js';
 import addressRoutes from './routes/addressRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
+import homePageRoutes from './routes/homePageRoutes.js';
+import orderStatusRoutes from './routes/orderStatusRoutes.js';
 
 dotenv.config();
 
@@ -40,6 +43,7 @@ app.use('/api', generalRateLimiter);
 
 app.use(express.json({ limit: '10mb' })); // הגדלת מגבלה להעלאת תמונות
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser()); // 🍪 Parse cookies for authentication
 app.use(morgan('dev'));
 
 // 🔒 Sanitize public responses - remove sensitive data from client responses
@@ -55,6 +59,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/users/addresses', addressRoutes);
 app.use('/api/upload', uploadRoutes); // 📤 Image Upload (Cloudinary)
 app.use('/api/categories', categoryRoutes); // 🏷️ Categories Management
+app.use('/api/homepage', homePageRoutes); // 🏠 Dynamic HomePage CMS
+app.use('/api/order-statuses', orderStatusRoutes); // 📋 Order Statuses Management
 
 // Health check
 app.get('/health', (req, res) => {
@@ -80,11 +86,14 @@ app.get('/', (req, res) => {
       orders: '/api/orders',
       users: '/api/users',
       addresses: '/api/users/addresses',
+      categories: '/api/categories',
+      homepage: '/api/homepage',
       admin: {
         dashboard: '/api/admin/dashboard/*',
         products: '/api/admin/products',
         orders: '/api/admin/orders',
-        users: '/api/admin/users'
+        users: '/api/admin/users',
+        homepage: '/api/homepage/admin'
       }
     },
     features: {
@@ -99,7 +108,8 @@ app.get('/', (req, res) => {
         'Products Management',
         'Orders Management',
         'Users Management',
-        'Real-time Statistics'
+        'Real-time Statistics',
+        'Dynamic HomePage CMS'
       ]
     }
   });
@@ -144,13 +154,15 @@ app.listen(PORT, () => {
   console.log(`   • Products: http://localhost:${PORT}/api/products`);
   console.log(`   • Cart:     http://localhost:${PORT}/api/cart`);
   console.log(`   • Orders:   http://localhost:${PORT}/api/orders`);
-  console.log(`   • Users:    http://localhost:${PORT}/api/users\n`);
+  console.log(`   • Users:    http://localhost:${PORT}/api/users`);
+  console.log(`   • HomePage: http://localhost:${PORT}/api/homepage\n`);
   
   console.log('🔐 Admin Panel Endpoints:');
   console.log(`   • Dashboard:  http://localhost:${PORT}/api/admin/dashboard/stats`);
   console.log(`   • Products:   http://localhost:${PORT}/api/admin/products`);
   console.log(`   • Orders:     http://localhost:${PORT}/api/admin/orders`);
-  console.log(`   • Users:      http://localhost:${PORT}/api/admin/users\n`);
+  console.log(`   • Users:      http://localhost:${PORT}/api/admin/users`);
+  console.log(`   • HomePage:   http://localhost:${PORT}/api/homepage/admin\n`);
   
   console.log('🔒 Security Features:');
   console.log('   ✅ Rate Limiting');

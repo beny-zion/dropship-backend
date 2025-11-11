@@ -17,12 +17,14 @@ export const getProducts = async (req, res) => {
       maxPrice,
       search,
       sort = '-createdAt',
-      featured
+      featured,
+      tags,
+      brand
     } = req.query;
 
     // ⚡ Create cache key from query params
     const cacheKey = CACHE_KEYS.PRODUCTS_LIST({
-      page, limit, category, minPrice, maxPrice, search, sort, featured
+      page, limit, category, minPrice, maxPrice, search, sort, featured, tags, brand
     });
 
     // ⚡ Check cache first
@@ -76,6 +78,19 @@ export const getProducts = async (req, res) => {
     // מוצרים מומלצים
     if (featured === 'true') {
       query.featured = true;
+    }
+
+    // פילטר לפי תגים
+    if (tags) {
+      const tagArray = tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+      if (tagArray.length > 0) {
+        query.tags = { $in: tagArray };
+      }
+    }
+
+    // פילטר לפי מותג
+    if (brand) {
+      query['specifications.brand'] = new RegExp(brand.trim(), 'i');
     }
 
     // מיון
@@ -224,6 +239,37 @@ export const getCategories = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'שגיאה בטעינת קטגוריות'
+    });
+  }
+};
+
+// @desc    Get popular tags
+// @route   GET /api/products/tags
+// @access  Public
+export const getPopularTags = async (req, res) => {
+  try {
+    const { limit = 20 } = req.query;
+
+    // Get all tags from active products and count occurrences
+    const tagAggregation = await Product.aggregate([
+      { $match: { status: 'active', tags: { $exists: true, $ne: [] } } },
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: parseInt(limit) },
+      { $project: { tag: '$_id', count: 1, _id: 0 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: tagAggregation
+    });
+  } catch (error) {
+    console.error('Get popular tags error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בטעינת תגים',
+      error: error.message
     });
   }
 };

@@ -3,7 +3,8 @@ import {
   uploadProductImage,
   deleteProductImage,
   validateImageURL,
-  uploadMultipleImages
+  uploadMultipleImages,
+  uploadHeroImageController
 } from '../controllers/uploadController.js';
 import { auth, adminAuth } from '../middleware/auth.js';
 import {adminRateLimiter}   from '../middleware/rateLimiter.js';
@@ -19,6 +20,13 @@ router.use(auth, adminAuth, adminRateLimiter);
  * @access  Admin
  */
 router.post('/image', uploadProductImage);
+
+/**
+ * @route   POST /api/upload/hero-image
+ * @desc    העלאת תמונת Hero באיכות מקסימלית (100% quality, ללא דחיסה)
+ * @access  Admin
+ */
+router.post('/hero-image', uploadHeroImageController);
 
 /**
  * @route   POST /api/upload/images

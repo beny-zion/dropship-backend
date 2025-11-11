@@ -7,8 +7,20 @@ import { deleteFromCloudinary, uploadBufferToCloudinary } from '../utils/cloudin
 // @access  Public
 export const getCategories = async (req, res) => {
   try {
-    const { active, includeStats } = req.query;
+    const { active, includeStats, ids } = req.query;
 
+    // If specific IDs are requested
+    if (ids) {
+      const idArray = ids.split(',').filter(id => id.trim());
+      const categories = await Category.find({ _id: { $in: idArray } }).sort({ displayOrder: 1 });
+      return res.json({
+        success: true,
+        count: categories.length,
+        data: categories,
+      });
+    }
+
+    // If only active categories requested
     let query = {};
     if (active === 'true') {
       const categories = await Category.getActiveCategories();
@@ -19,6 +31,7 @@ export const getCategories = async (req, res) => {
       });
     }
 
+    // Get all categories
     const categories = await Category.find(query).sort({ displayOrder: 1 });
 
     res.json({

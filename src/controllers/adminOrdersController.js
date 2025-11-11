@@ -2,6 +2,7 @@
 
 import Order from '../models/Order.js';
 import User from '../models/User.js';
+import OrderStatus from '../models/OrderStatus.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
 // @desc    Get all orders with pagination and filters
@@ -162,19 +163,16 @@ export const getOrderById = asyncHandler(async (req, res) => {
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status, message } = req.body;
 
-  const validStatuses = [
-    'pending',
-    'confirmed',
-    'processing',
-    'shipped',
-    'delivered',
-    'cancelled'
-  ];
+  // Validate status exists in OrderStatus collection
+  const statusExists = await OrderStatus.findOne({
+    key: status,
+    isActive: true
+  });
 
-  if (!validStatuses.includes(status)) {
+  if (!statusExists) {
     return res.status(400).json({
       success: false,
-      message: 'סטטוס לא תקין'
+      message: 'סטטוס לא תקין או לא פעיל'
     });
   }
 
@@ -193,12 +191,25 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   // Add timeline entry
   order.timeline.push({
     status,
-    message: message || getDefaultStatusMessage(status),
+    message: message || await getDefaultStatusMessage(status),
     timestamp: Date.now()
   });
 
+  // Handle credit hold
+  if (status === 'payment_hold' && !order.creditHold?.heldAt) {
+    order.creditHold = {
+      amount: order.pricing.total,
+      heldAt: Date.now()
+    };
+  }
+
+  // Release credit hold when cancelled
+  if (status === 'cancelled' && order.creditHold?.heldAt && !order.creditHold?.releasedAt) {
+    order.creditHold.releasedAt = Date.now();
+  }
+
   // Update dates based on status
-  if (status === 'shipped' && !order.shipping.shippedAt) {
+  if (status === 'shipped_to_customer' && !order.shipping.shippedAt) {
     order.shipping.shippedAt = Date.now();
   }
 
@@ -206,7 +217,7 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
     order.shipping.deliveredAt = Date.now();
   }
 
-  if (status === 'confirmed' && order.payment.status === 'pending') {
+  if (status === 'payment_hold' && order.payment.status === 'pending') {
     order.payment.status = 'completed';
     order.payment.paidAt = Date.now();
   }
@@ -247,14 +258,14 @@ export const updateTracking = asyncHandler(async (req, res) => {
     order.shipping.carrier = carrier;
   }
 
-  // If order is not yet shipped, update status
-  if (order.status === 'confirmed' || order.status === 'processing') {
-    order.status = 'shipped';
+  // If order is in Israel warehouse, update to shipped to customer
+  if (order.status === 'arrived_israel_warehouse') {
+    order.status = 'shipped_to_customer';
     order.shipping.shippedAt = Date.now();
-    
+
     order.timeline.push({
-      status: 'shipped',
-      message: `ההזמנה נשלחה. מספר מעקב: ${trackingNumber}`,
+      status: 'shipped_to_customer',
+      message: `ההזמנה נשלחה ללקוח. מספר מעקב: ${trackingNumber}`,
       timestamp: Date.now()
     });
   }
@@ -404,22 +415,46 @@ export const getOrderStats = asyncHandler(async (req, res) => {
   const [
     todayOrders,
     pendingOrders,
-    processingOrders,
-    shippedOrders,
+    paymentHoldOrders,
+    orderedOrders,
+    arrivedUSOrders,
+    shippedToIsraelOrders,
+    customsOrders,
+    arrivedIsraelOrders,
+    shippedToCustomerOrders,
+    deliveredOrders,
     statusBreakdown
   ] = await Promise.all([
     // Today's orders
     Order.countDocuments({ createdAt: { $gte: today } }),
-    
+
     // Pending orders
     Order.countDocuments({ status: 'pending' }),
-    
-    // Processing orders
-    Order.countDocuments({ status: 'processing' }),
-    
-    // Shipped orders (not delivered yet)
-    Order.countDocuments({ status: 'shipped' }),
-    
+
+    // Payment hold orders
+    Order.countDocuments({ status: 'payment_hold' }),
+
+    // Ordered from US
+    Order.countDocuments({ status: 'ordered' }),
+
+    // Arrived at US warehouse
+    Order.countDocuments({ status: 'arrived_us_warehouse' }),
+
+    // Shipped to Israel
+    Order.countDocuments({ status: 'shipped_to_israel' }),
+
+    // At customs
+    Order.countDocuments({ status: 'customs_israel' }),
+
+    // Arrived at Israel warehouse
+    Order.countDocuments({ status: 'arrived_israel_warehouse' }),
+
+    // Shipped to customer
+    Order.countDocuments({ status: 'shipped_to_customer' }),
+
+    // Delivered
+    Order.countDocuments({ status: 'delivered' }),
+
     // Status breakdown
     Order.aggregate([
       {
@@ -436,8 +471,14 @@ export const getOrderStats = asyncHandler(async (req, res) => {
     data: {
       today: todayOrders,
       pending: pendingOrders,
-      processing: processingOrders,
-      shipped: shippedOrders,
+      payment_hold: paymentHoldOrders,
+      ordered: orderedOrders,
+      arrived_us_warehouse: arrivedUSOrders,
+      shipped_to_israel: shippedToIsraelOrders,
+      customs_israel: customsOrders,
+      arrived_israel_warehouse: arrivedIsraelOrders,
+      shipped_to_customer: shippedToCustomerOrders,
+      delivered: deliveredOrders,
       breakdown: statusBreakdown.reduce((acc, item) => {
         acc[item._id] = item.count;
         return acc;
@@ -447,14 +488,26 @@ export const getOrderStats = asyncHandler(async (req, res) => {
 });
 
 // Helper function for default status messages
-function getDefaultStatusMessage(status) {
+async function getDefaultStatusMessage(status) {
+  // Try to get message from OrderStatus collection
+  const statusObj = await OrderStatus.findOne({ key: status });
+
+  if (statusObj && statusObj.description) {
+    return statusObj.description;
+  }
+
+  // Fallback messages
   const messages = {
     pending: 'ההזמנה התקבלה וממתינה לאישור',
-    confirmed: 'ההזמנה אושרה ונמצאת בהכנה',
-    processing: 'ההזמנה בהכנה למשלוח',
-    shipped: 'ההזמנה נשלחה',
-    delivered: 'ההזמנה נמסרה ללקוח',
-    cancelled: 'ההזמנה בוטלה'
+    payment_hold: 'מסגרת אשראי נעולה בהצלחה',
+    ordered: 'ההזמנה בוצעה מארה"ב',
+    cancelled: 'ההזמנה בוטלה',
+    arrived_us_warehouse: 'ההזמנה הגיעה למרכז הלוגיסטי בארה"ב',
+    shipped_to_israel: 'ההזמנה נשלחה לישראל',
+    customs_israel: 'ההזמנה הגיעה למכס בישראל',
+    arrived_israel_warehouse: 'ההזמנה הגיעה למרכז הלוגיסטי בישראל',
+    shipped_to_customer: 'ההזמנה נשלחה אליך',
+    delivered: 'ההזמנה נמסרה ללקוח'
   };
 
   return messages[status] || `סטטוס עודכן ל-${status}`;

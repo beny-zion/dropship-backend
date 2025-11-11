@@ -30,8 +30,7 @@ export const getMyOrders = async (req, res) => {
       .populate('shippingAddress')
       .sort(sortBy)
       .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
+      .skip((page - 1) * limit);
     
     // Get total count for pagination
     const total = await Order.countDocuments(query);
@@ -65,8 +64,7 @@ export const getOrderById = async (req, res) => {
       user: req.user.id
     })
       .populate('items.product', 'name_he imageUrl price asin')
-      .populate('shippingAddress')
-      .lean();
+      .populate('shippingAddress');
 
     if (!order) {
       return res.status(404).json({
@@ -74,6 +72,15 @@ export const getOrderById = async (req, res) => {
         message: 'הזמנה לא נמצאה'
       });
     }
+
+    // Debug logging
+    console.log('Order dates:', {
+      createdAt: order.createdAt,
+      createdAtType: typeof order.createdAt,
+      createdAtIsDate: order.createdAt instanceof Date,
+      updatedAt: order.updatedAt,
+      timelineTimestamp: order.timeline?.[0]?.timestamp
+    });
 
     res.json({
       success: true,
@@ -226,12 +233,26 @@ export const createOrder = async (req, res) => {
       status: 'pending'
     });
 
+    console.log('Order after create:', {
+      _id: order._id,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      timeline: order.timeline
+    });
+
     // Clear user's cart
     await Cart.findOneAndDelete({ user: req.user.id });
 
     // Populate order before sending
     const populatedOrder = await Order.findById(order._id)
       .populate('items.product', 'name_he images price');
+
+    console.log('Order after populate:', {
+      _id: populatedOrder._id,
+      createdAt: populatedOrder.createdAt,
+      updatedAt: populatedOrder.updatedAt,
+      timeline: populatedOrder.timeline
+    });
 
     res.status(201).json({
       success: true,
@@ -311,15 +332,29 @@ export const cancelOrder = async (req, res) => {
       });
     }
 
-    // Check if order can be cancelled
-    if (order.status === 'delivered' || order.status === 'cancelled') {
+    // Check if order can be cancelled - only before it's ordered from US
+    const cancelableStatuses = ['pending', 'payment_hold'];
+    if (!cancelableStatuses.includes(order.status)) {
       return res.status(400).json({
         success: false,
-        message: 'לא ניתן לבטל הזמנה זו'
+        message: 'לא ניתן לבטל הזמנה זו - ההזמנה כבר בוצעה'
       });
     }
 
     order.status = 'cancelled';
+
+    // Release credit hold if exists
+    if (order.creditHold?.heldAt && !order.creditHold?.releasedAt) {
+      order.creditHold.releasedAt = Date.now();
+    }
+
+    // Add timeline entry
+    order.timeline.push({
+      status: 'cancelled',
+      message: 'ההזמנה בוטלה על ידי הלקוח',
+      timestamp: Date.now()
+    });
+
     await order.save();
 
     res.json({

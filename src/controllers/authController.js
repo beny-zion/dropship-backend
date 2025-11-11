@@ -30,10 +30,17 @@ export const register = async (req, res) => {
     // יצירת token
     const token = user.generateAuthToken();
 
+    // 🍪 Send token as HttpOnly cookie (secure against XSS)
+    res.cookie('token', token, {
+      httpOnly: true, // Cannot be accessed by JavaScript
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'lax', // CSRF protection
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.status(201).json({
       success: true,
       message: 'משתמש נוצר בהצלחה',
-      token,
       user: {
         id: user._id,
         email: user.email,
@@ -95,10 +102,17 @@ export const login = async (req, res) => {
     // יצירת token
     const token = user.generateAuthToken();
 
+    // 🍪 Send token as HttpOnly cookie (secure against XSS)
+    res.cookie('token', token, {
+      httpOnly: true, // Cannot be accessed by JavaScript
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'lax', // CSRF protection
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.json({
       success: true,
       message: 'התחברת בהצלחה',
-      token,
       user: {
         id: user._id,
         email: user.email,
@@ -123,7 +137,7 @@ export const login = async (req, res) => {
 // @access  Private
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user._id);
 
     res.json({
       success: true,
@@ -163,6 +177,13 @@ export const logout = async (req, res) => {
       // מוסיף את הטוקן לרשימה השחורה
       tokenBlacklist.add(token, expiryTime);
     }
+
+    // 🍪 Clear the HttpOnly cookie
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
 
     res.json({
       success: true,

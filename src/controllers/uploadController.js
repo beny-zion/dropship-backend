@@ -1,4 +1,4 @@
-import { uploadImage, deleteImage, validateImageUrl } from '../utils/cloudinary.js';
+import { uploadImage, uploadHeroImage, deleteImage, validateImageUrl } from '../utils/cloudinary.js';
 
 /**
  * העלאת תמונה ל-Cloudinary
@@ -162,6 +162,45 @@ export const uploadMultipleImages = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'שגיאה בהעלאת התמונות'
+    });
+  }
+};
+
+/**
+ * העלאת תמונת Hero באיכות גבוהה מאוד
+ * POST /api/upload/hero-image
+ */
+export const uploadHeroImageController = async (req, res) => {
+  try {
+    const { file, fileData } = req.body;
+
+    if (!file && !fileData) {
+      return res.status(400).json({
+        success: false,
+        message: 'לא נשלח קובץ להעלאה'
+      });
+    }
+
+    // העלאה ל-Cloudinary באיכות מקסימלית
+    const result = await uploadHeroImage(file || fileData);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        url: result.url,
+        publicId: result.publicId,
+        width: result.width,
+        height: result.height,
+        format: result.format,
+        bytes: result.bytes
+      },
+      message: 'תמונת Hero הועלתה בהצלחה באיכות מקסימלית'
+    });
+  } catch (error) {
+    console.error('Error uploading hero image:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'שגיאה בהעלאת תמונת Hero'
     });
   }
 };

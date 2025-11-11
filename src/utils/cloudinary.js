@@ -82,6 +82,38 @@ export const uploadBufferToCloudinary = (buffer, folder = process.env.CLOUDINARY
 };
 
 /**
+ * העלאת תמונת Hero באיכות גבוהה מאוד (ללא דחיסה)
+ * @param {string} file - נתיב הקובץ או base64 string
+ * @param {string} folder - תיקיה ב-Cloudinary
+ * @returns {Promise<object>} אובייקט עם URL ופרטים נוספים
+ */
+export const uploadHeroImage = async (file, folder = 'homepage/heroes') => {
+  try {
+    const result = await cloudinary.uploader.upload(file, {
+      folder: folder,
+      resource_type: 'image', // מאלץ את Cloudinary לטפל בזה כתמונה (כולל SVG)
+      quality: 100, // איכות מקסימלית - 100%
+      flags: 'preserve_transparency', // שמירה על שקיפות (לSVG/PNG)
+      invalidate: true, // מבטל cache ישן
+      // ללא טרנספורמציות - שומרים את הגודל המקורי
+    });
+
+    return {
+      url: result.secure_url,
+      publicId: result.public_id,
+      width: result.width,
+      height: result.height,
+      format: result.format,
+      resourceType: result.resource_type,
+      bytes: result.bytes
+    };
+  } catch (error) {
+    console.error('שגיאה בהעלאת תמונת Hero:', error);
+    throw new Error('שגיאה בהעלאת תמונת Hero');
+  }
+};
+
+/**
  * מחיקת תמונה מ-Cloudinary
  * @param {string} publicId - מזהה ציבורי של התמונה
  * @returns {Promise<object>}

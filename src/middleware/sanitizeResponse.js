@@ -59,7 +59,8 @@ const sanitizeObject = (obj, fieldsToRemove = SENSITIVE_FIELDS, seen = new WeakS
   seen.add(obj);
 
   // המרת Mongoose Document לאובייקט רגיל אם צריך
-  const plainObj = obj.toObject ? obj.toObject() : obj;
+  // שימוש ב-toJSON כדי להפעיל את ה-transform שמטפל בתאריכים
+  const plainObj = obj.toJSON ? obj.toJSON() : (obj.toObject ? obj.toObject() : obj);
 
   // יצירת עותק של האובייקט
   const sanitized = { ...plainObj };

@@ -1,0 +1,36 @@
+# Render.com Blueprint Configuration
+# This file configures your backend deployment on Render
+
+services:
+  # Backend Web Service
+  - type: web
+    name: amazon-dropship-backend
+    env: node
+    region: frankfurt  # Closest to Israel
+    plan: free  # Change to 'starter' for $7/month (no sleep)
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false  # Add manually in Render dashboard
+      - key: JWT_SECRET
+        generateValue: true  # Auto-generate secure secret
+      - key: FRONTEND_URL
+        sync: false  # Add your Vercel URL manually
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

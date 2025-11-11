@@ -15,9 +15,22 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'סיסמה נדרשת'],
+    required: function() {
+      // Password required only for local auth (not for Google OAuth)
+      return this.authProvider === 'local';
+    },
     minlength: [6, 'סיסמה חייבת להכיל לפחות 6 תווים'],
     select: false
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
+  },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true // Allows null values to be non-unique
   },
   firstName: {
     type: String,
@@ -31,7 +44,7 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'טלפון נדרש'],
+    required: false, // Phone is now optional - will be collected at checkout
     match: [/^05\d{8}$/, 'מספר טלפון לא תקין']
   },
   

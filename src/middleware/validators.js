@@ -1,6 +1,7 @@
 // middleware/validators.js - Input Validation מקיף אבל לא מגביל
 
 import { body, param, validationResult } from 'express-validator';
+import OrderStatus from '../models/OrderStatus.js';
 
 // Middleware לבדיקת תוצאות Validation
 export const validate = (req, res, next) => {
@@ -78,7 +79,19 @@ export const validateProduct = [
 // ✅ Validation לעדכון סטטוס הזמנה
 export const validateOrderStatus = [
   body('status')
-    .isIn(['pending', 'processing', 'shipped', 'delivered', 'cancelled'])
+    .custom(async (value) => {
+      // Check if status exists in OrderStatus collection
+      const statusExists = await OrderStatus.findOne({
+        key: value,
+        isActive: true
+      });
+
+      if (!statusExists) {
+        throw new Error('סטטוס לא חוקי');
+      }
+
+      return true;
+    })
     .withMessage('סטטוס לא חוקי'),
 
   body('trackingNumber')
