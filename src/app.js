@@ -31,6 +31,9 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
+// Trust proxy - Required for Render.com and other reverse proxies
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet());
 app.use(cors({
