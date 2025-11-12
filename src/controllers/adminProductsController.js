@@ -155,9 +155,14 @@ export const createProduct = asyncHandler(async (req, res) => {
     }
   }
 
+  // ניקוי ASIN ריק
+  if (req.body.asin === '' || req.body.asin === null) {
+    delete req.body.asin;
+  }
+
   // Check if ASIN already exists (רק אם סופק ASIN)
-  if (req.body.asin) {
-    const existingProduct = await Product.findOne({ asin: req.body.asin });
+  if (req.body.asin && req.body.asin.trim()) {
+    const existingProduct = await Product.findOne({ asin: req.body.asin.trim() });
 
     if (existingProduct) {
       return res.status(400).json({
@@ -225,9 +230,14 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
   }
 
+  // ניקוי ASIN ריק
+  if (req.body.asin === '' || req.body.asin === null) {
+    req.body.asin = undefined; // מחיקה של השדה
+  }
+
   // If updating ASIN, check if new ASIN exists
-  if (req.body.asin && req.body.asin !== product.asin) {
-    const existingProduct = await Product.findOne({ asin: req.body.asin });
+  if (req.body.asin && req.body.asin.trim() && req.body.asin !== product.asin) {
+    const existingProduct = await Product.findOne({ asin: req.body.asin.trim() });
     if (existingProduct) {
       return res.status(400).json({
         success: false,

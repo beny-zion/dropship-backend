@@ -6,10 +6,9 @@ const productSchema = new mongoose.Schema({
   asin: {
     type: String,
     required: false, // אופציונלי - רק למוצרי אמזון
-    unique: true,
-    sparse: true, // מאפשר מספר מוצרים בלי ASIN
     uppercase: true,
-    trim: true
+    trim: true,
+    default: undefined // מחיקה של ערכים ריקים
   },
   
   slug: {
@@ -351,6 +350,15 @@ const productSchema = new mongoose.Schema({
   lastSyncedAt: Date
 });
 
+// ניקוי ASIN ריק לפני שמירה
+productSchema.pre('save', function(next) {
+  // אם ASIN הוא מחרוזת ריקה, מחק אותו לגמרי
+  if (this.asin === '' || this.asin === null) {
+    this.asin = undefined;
+  }
+  next();
+});
+
 // יצירת slug אוטומטית
 productSchema.pre('save', function(next) {
   if (this.isModified('name_he')) {
@@ -373,7 +381,13 @@ productSchema.pre('save', function(next) {
 });
 
 // אינדקסים
-productSchema.index({ asin: 1 });
+productSchema.index(
+  { asin: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { asin: { $type: 'string', $gt: '' } }
+  }
+);
 productSchema.index({ slug: 1 });
 productSchema.index({ category: 1 });
 productSchema.index({ 'price.ils': 1 });
