@@ -172,28 +172,24 @@ export const createProduct = asyncHandler(async (req, res) => {
     }
   }
 
-  // בדיקת SKU ייחודיים בווריאנטים
+  // בדיקת SKU ייחודיים בווריאנטים - רק אם יש SKU בפועל
   if (req.body.variants && req.body.variants.length > 0) {
     const skus = req.body.variants.map(v => v.sku).filter(Boolean);
-    const uniqueSkus = new Set(skus);
 
-    if (skus.length !== uniqueSkus.size) {
-      return res.status(400).json({
-        success: false,
-        message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
-      });
-    }
+    // רק אם יש SKU בפועל, נבדוק ייחודיות
+    if (skus.length > 0) {
+      const uniqueSkus = new Set(skus);
 
-    // בדיקה שאין SKU קיים במוצרים אחרים
-    const existingVariants = await Product.findOne({
-      'variants.sku': { $in: skus }
-    });
+      // בדיקה שאין SKU כפול בתוך אותו מוצר
+      if (skus.length !== uniqueSkus.size) {
+        return res.status(400).json({
+          success: false,
+          message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
+        });
+      }
 
-    if (existingVariants) {
-      return res.status(400).json({
-        success: false,
-        message: 'אחד או יותר מה-SKU כבר קיימים במערכת'
-      });
+      // הסרנו את הבדיקה הגלובלית - SKU לא חייב להיות ייחודי בין מוצרים שונים
+      // מותגים שונים יכולים להשתמש באותו SKU פנימי
     }
   }
 
@@ -246,29 +242,24 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
   }
 
-  // בדיקת SKU ייחודיים בווריאנטים (אם מעדכנים ווריאנטים)
+  // בדיקת SKU ייחודיים בווריאנטים - רק אם יש SKU בפועל
   if (req.body.variants && req.body.variants.length > 0) {
     const skus = req.body.variants.map(v => v.sku).filter(Boolean);
-    const uniqueSkus = new Set(skus);
 
-    if (skus.length !== uniqueSkus.size) {
-      return res.status(400).json({
-        success: false,
-        message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
-      });
-    }
+    // רק אם יש SKU בפועל, נבדוק ייחודיות
+    if (skus.length > 0) {
+      const uniqueSkus = new Set(skus);
 
-    // בדיקה שאין SKU קיים במוצרים אחרים (למעט המוצר הנוכחי)
-    const existingVariants = await Product.findOne({
-      _id: { $ne: req.params.id },
-      'variants.sku': { $in: skus }
-    });
+      // בדיקה שאין SKU כפול בתוך אותו מוצר
+      if (skus.length !== uniqueSkus.size) {
+        return res.status(400).json({
+          success: false,
+          message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
+        });
+      }
 
-    if (existingVariants) {
-      return res.status(400).json({
-        success: false,
-        message: 'אחד או יותר מה-SKU כבר קיימים במוצר אחר'
-      });
+      // הסרנו את הבדיקה הגלובלית - SKU לא חייב להיות ייחודי בין מוצרים שונים
+      // מותגים שונים יכולים להשתמש באותו SKU פנימי
     }
   }
 
