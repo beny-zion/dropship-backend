@@ -73,8 +73,8 @@ export const googleCallback = async (req, res) => {
       // Create new user
       user = await User.create({
         email,
-        firstName: given_name || '',
-        lastName: family_name || '',
+        firstName: given_name || 'משתמש',
+        lastName: family_name || given_name || 'Google', // Use first name as last name if not provided
         googleId: id,
         authProvider: 'google',
         // phone is optional - will be collected at checkout
