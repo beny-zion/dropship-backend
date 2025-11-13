@@ -388,11 +388,10 @@ export const refreshOrderItems = asyncHandler(async (req, res) => {
       }
     }
 
-    updatedItems.push({
-      ...item.toObject(),
-      supplierLink: supplierLink,
-      supplierName: product.supplier?.name || 'Amazon'
-    });
+    const itemData = item.toJSON();
+    itemData.supplierLink = supplierLink;
+    itemData.supplierName = product.supplier?.name || 'Amazon';
+    updatedItems.push(itemData);
   }
 
   order.items = updatedItems;

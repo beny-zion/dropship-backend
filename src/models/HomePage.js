@@ -333,7 +333,45 @@ const homePageSchema = new mongoose.Schema({
   }
 
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: {
+    virtuals: true,
+    transform: function(doc, ret) {
+      // Always use _id timestamp as fallback for all dates
+      const fallbackDate = doc._id.getTimestamp().toISOString();
+
+      // Fix createdAt
+      if (doc.createdAt instanceof Date) {
+        ret.createdAt = doc.createdAt.toISOString();
+      } else {
+        ret.createdAt = fallbackDate;
+      }
+
+      // Fix updatedAt
+      if (doc.updatedAt instanceof Date) {
+        ret.updatedAt = doc.updatedAt.toISOString();
+      } else {
+        ret.updatedAt = fallbackDate;
+      }
+
+      // Fix publishedAt
+      if (doc.publishedAt instanceof Date) {
+        ret.publishedAt = doc.publishedAt.toISOString();
+      } else if (ret.publishedAt) {
+        ret.publishedAt = fallbackDate;
+      }
+
+      // Fix analytics.lastViewed
+      if (doc.analytics?.lastViewed instanceof Date) {
+        ret.analytics.lastViewed = doc.analytics.lastViewed.toISOString();
+      } else if (ret.analytics?.lastViewed) {
+        ret.analytics.lastViewed = fallbackDate;
+      }
+
+      return ret;
+    }
+  },
+  toObject: { virtuals: true }
 });
 
 // ============================================

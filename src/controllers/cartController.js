@@ -40,13 +40,12 @@ const calculateCartTotals = (cart) => {
       continue;
     }
 
-    validItems.push({
-      ...item.toObject(),
-      product: product,
-      variant: variantInfo,
-      price: itemPrice, // ⭐ מחיר בסיסי + עלות נוספת של ווריאנט
-      subtotalPrice: itemPrice * item.quantity
-    });
+    const itemData = item.toJSON();
+    itemData.product = product;
+    itemData.variant = variantInfo;
+    itemData.price = itemPrice; // ⭐ מחיר בסיסי + עלות נוספת של ווריאנט
+    itemData.subtotalPrice = itemPrice * item.quantity;
+    validItems.push(itemData);
 
     subtotal += itemPrice * item.quantity;
   }

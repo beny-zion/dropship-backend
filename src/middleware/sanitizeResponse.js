@@ -62,8 +62,8 @@ const sanitizeObject = (obj, fieldsToRemove = SENSITIVE_FIELDS, seen = new WeakS
   // שימוש ב-toJSON כדי להפעיל את ה-transform שמטפל בתאריכים
   const plainObj = obj.toJSON ? obj.toJSON() : (obj.toObject ? obj.toObject() : obj);
 
-  // יצירת עותק של האובייקט
-  const sanitized = { ...plainObj };
+  // יצירת עותק של האובייקט - Use Object.assign to preserve dates
+  const sanitized = Object.assign({}, plainObj);
 
   // המרת כל השדות שהם ObjectId ל-string
   Object.keys(sanitized).forEach(key => {
@@ -102,8 +102,21 @@ const sanitizeObject = (obj, fieldsToRemove = SENSITIVE_FIELDS, seen = new WeakS
 
   // סינון רקורסיבי של שדות מקוננים
   Object.keys(sanitized).forEach(key => {
-    if (sanitized[key] && typeof sanitized[key] === 'object') {
-      sanitized[key] = sanitizeObject(sanitized[key], fieldsToRemove, seen);
+    const value = sanitized[key];
+
+    // Skip null values
+    if (!value) return;
+
+    // If it's a Date object that wasn't converted to string by toJSON,
+    // convert it now (this is a fallback)
+    if (value instanceof Date) {
+      sanitized[key] = value.toISOString();
+      return;
+    }
+
+    // For other objects (not strings, not dates), recurse
+    if (typeof value === 'object' && !(value instanceof Date)) {
+      sanitized[key] = sanitizeObject(value, fieldsToRemove, seen);
     }
   });
 
@@ -145,7 +158,7 @@ export const sanitizePublicResponse = (req, res, next) => {
 export const sanitizeProduct = (product) => {
   if (!product) return null;
 
-  const sanitized = product.toObject ? product.toObject() : { ...product };
+  const sanitized = product.toObject ? product.toObject() : Object.assign({}, product);
 
   return sanitizeObject(sanitized);
 };

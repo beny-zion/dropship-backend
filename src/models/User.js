@@ -95,7 +95,38 @@ const userSchema = new mongoose.Schema({
     default: 'user'
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: {
+    virtuals: true,
+    transform: function(doc, ret) {
+      // Always use _id timestamp as fallback for all dates
+      const fallbackDate = doc._id.getTimestamp().toISOString();
+
+      // Fix createdAt
+      if (doc.createdAt instanceof Date) {
+        ret.createdAt = doc.createdAt.toISOString();
+      } else {
+        ret.createdAt = fallbackDate;
+      }
+
+      // Fix updatedAt
+      if (doc.updatedAt instanceof Date) {
+        ret.updatedAt = doc.updatedAt.toISOString();
+      } else {
+        ret.updatedAt = fallbackDate;
+      }
+
+      // Fix lastActive
+      if (doc.lastActive instanceof Date) {
+        ret.lastActive = doc.lastActive.toISOString();
+      } else if (ret.lastActive) {
+        ret.lastActive = fallbackDate;
+      }
+
+      return ret;
+    }
+  },
+  toObject: { virtuals: true }
 });
 
 // Hash password before saving
@@ -134,9 +165,5 @@ userSchema.methods.generateAuthToken = function() {
     { expiresIn: process.env.JWT_EXPIRE }
   );
 };
-
-// Ensure virtuals are included in JSON
-userSchema.set('toJSON', { virtuals: true });
-userSchema.set('toObject', { virtuals: true });
 
 export default mongoose.model('User', userSchema);

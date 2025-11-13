@@ -4,6 +4,7 @@ import HomePage from '../models/HomePage.js';
 import Category from '../models/Category.js';
 import Product from '../models/Product.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { cacheDelPattern } from '../utils/cache.js';
 
 // ============================================
 // PUBLIC ENDPOINTS
@@ -35,12 +36,12 @@ export const getActiveHomePage = asyncHandler(async (req, res) => {
     await homePage.incrementViews();
   }
 
+  const homePageData = homePage.toJSON();
+  homePageData.sections = sections;
+
   res.json({
     success: true,
-    data: {
-      ...homePage.toObject(),
-      sections
-    }
+    data: homePageData
   });
 });
 
@@ -371,6 +372,11 @@ export const updateSection = asyncHandler(async (req, res) => {
   homePage.lastModifiedBy = req.user._id;
 
   await homePage.save();
+
+  // ⚡ Clear cache to ensure fresh data on frontend
+  cacheDelPattern('homepage');
+  cacheDelPattern('categories');
+  console.log('🗑️ Cache cleared after section update');
 
   res.json({
     success: true,

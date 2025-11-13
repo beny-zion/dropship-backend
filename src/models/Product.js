@@ -348,6 +348,38 @@ const productSchema = new mongoose.Schema({
   },
   
   lastSyncedAt: Date
+}, {
+  toJSON: {
+    virtuals: true,
+    transform: function(doc, ret) {
+      // Always use _id timestamp as fallback for all dates
+      const fallbackDate = doc._id.getTimestamp().toISOString();
+
+      // Fix createdAt
+      if (doc.createdAt instanceof Date) {
+        ret.createdAt = doc.createdAt.toISOString();
+      } else {
+        ret.createdAt = fallbackDate;
+      }
+
+      // Fix updatedAt
+      if (doc.updatedAt instanceof Date) {
+        ret.updatedAt = doc.updatedAt.toISOString();
+      } else {
+        ret.updatedAt = fallbackDate;
+      }
+
+      // Fix lastSyncedAt
+      if (doc.lastSyncedAt instanceof Date) {
+        ret.lastSyncedAt = doc.lastSyncedAt.toISOString();
+      } else if (ret.lastSyncedAt) {
+        ret.lastSyncedAt = fallbackDate;
+      }
+
+      return ret;
+    }
+  },
+  toObject: { virtuals: true }
 });
 
 // ניקוי ASIN ריק לפני שמירה
