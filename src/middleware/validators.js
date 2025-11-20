@@ -177,8 +177,8 @@ export const validateProductUpdate = [
 
   body('variants')
     .optional()
-    .isArray({ max: 100 })
-    .withMessage('ניתן להוסיף עד 100 ווריאנטים'),
+    .isArray({ max: 150 })
+    .withMessage('ניתן להוסיף עד 150 ווריאנטים'),
 
   body('variants.*.sku')
     .optional()
