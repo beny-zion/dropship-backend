@@ -157,7 +157,7 @@ const productSchema = new mongoose.Schema({
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',
-    default: null
+    required: [true, 'חובה לבחור קטגוריה למוצר']
   },
 
   // שדה מחרוזת ישן לתאימות לאחור (deprecated)

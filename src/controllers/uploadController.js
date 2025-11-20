@@ -1,4 +1,5 @@
 import { uploadImage, uploadHeroImage, deleteImage, validateImageUrl } from '../utils/cloudinary.js';
+import ImageTracking from '../models/ImageTracking.js';
 
 /**
  * העלאת תמונה ל-Cloudinary
@@ -17,6 +18,23 @@ export const uploadProductImage = async (req, res) => {
 
     // העלאה ל-Cloudinary
     const result = await uploadImage(file || fileData);
+
+    // שמירה במעקב תמונות
+    await ImageTracking.create({
+      publicId: result.publicId,
+      url: result.url,
+      size: result.bytes || 0,
+      format: result.format,
+      cloudinaryMetadata: {
+        width: result.width,
+        height: result.height,
+        resourceType: result.resourceType,
+        bytes: result.bytes,
+        createdAt: new Date()
+      },
+      uploadedBy: req.user?._id,
+      status: 'orphaned'  // יעודכן כשישויך למוצר
+    });
 
     res.status(200).json({
       success: true,
@@ -144,6 +162,26 @@ export const uploadMultipleImages = async (req, res) => {
     // העלאה של כל התמונות
     const uploadPromises = files.map(file => uploadImage(file));
     const results = await Promise.all(uploadPromises);
+
+    // שמירה במעקב תמונות
+    const trackingPromises = results.map(result =>
+      ImageTracking.create({
+        publicId: result.publicId,
+        url: result.url,
+        size: result.bytes || 0,
+        format: result.format,
+        cloudinaryMetadata: {
+          width: result.width,
+          height: result.height,
+          resourceType: result.resourceType,
+          bytes: result.bytes,
+          createdAt: new Date()
+        },
+        uploadedBy: req.user?._id,
+        status: 'orphaned'
+      })
+    );
+    await Promise.all(trackingPromises);
 
     const uploadedImages = results.map(result => ({
       url: result.url,

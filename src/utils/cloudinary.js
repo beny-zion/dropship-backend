@@ -36,7 +36,8 @@ export const uploadImage = async (file, folder = process.env.CLOUDINARY_FOLDER) 
       width: result.width,
       height: result.height,
       format: result.format,
-      resourceType: result.resource_type
+      resourceType: result.resource_type,
+      bytes: result.bytes
     };
   } catch (error) {
     console.error('שגיאה בהעלאת תמונה ל-Cloudinary:', error);
@@ -73,7 +74,8 @@ export const uploadBufferToCloudinary = (buffer, folder = process.env.CLOUDINARY
           width: result.width,
           height: result.height,
           format: result.format,
-          resourceType: result.resource_type
+          resourceType: result.resource_type,
+          bytes: result.bytes
         });
       }
     );

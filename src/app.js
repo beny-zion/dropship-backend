@@ -23,6 +23,7 @@ import uploadRoutes from './routes/uploadRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
 import homePageRoutes from './routes/homePageRoutes.js';
 import orderStatusRoutes from './routes/orderStatusRoutes.js';
+import mediaRoutes from './routes/mediaRoutes.js';
 
 dotenv.config();
 
@@ -64,6 +65,7 @@ app.use('/api/upload', uploadRoutes); // 📤 Image Upload (Cloudinary)
 app.use('/api/categories', categoryRoutes); // 🏷️ Categories Management
 app.use('/api/homepage', homePageRoutes); // 🏠 Dynamic HomePage CMS
 app.use('/api/order-statuses', orderStatusRoutes); // 📋 Order Statuses Management
+app.use('/api/admin/media', mediaRoutes); // 🖼️ Media Management (Cloudinary Tracking)
 
 // Health check
 app.get('/health', (req, res) => {

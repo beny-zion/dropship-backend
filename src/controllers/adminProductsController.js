@@ -4,6 +4,18 @@ import Product from '../models/Product.js';
 import Category from '../models/Category.js';
 import Order from '../models/Order.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import ImageTracking from '../models/ImageTracking.js';
+
+// פונקציית עזר לחילוץ publicId מ-URL של Cloudinary
+function extractPublicId(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)\.\w+$/);
+    return match ? match[1] : null;
+  } catch (error) {
+    return null;
+  }
+}
 
 // @desc    Get all products with pagination and filters (Admin)
 // @route   GET /api/admin/products
@@ -144,16 +156,50 @@ export const getProductById = asyncHandler(async (req, res) => {
 // @route   POST /api/admin/products
 // @access  Private/Admin
 export const createProduct = asyncHandler(async (req, res) => {
-  // Check if category exists in the new category system
-  if (req.body.category) {
-    const category = await Category.findById(req.body.category);
-    if (!category) {
-      return res.status(400).json({
-        success: false,
-        message: 'הקטגוריה שנבחרה לא קיימת במערכת'
-      });
+  // ✅ 1. בדיקה ש-category נשלח בכלל (חובה!)
+  if (!req.body.category) {
+    return res.status(400).json({
+      success: false,
+      message: 'חובה לבחור קטגוריה למוצר'
+    });
+  }
+
+  // ✅ 2. בדיקה שה-category תקין (ObjectId)
+  if (!req.body.category.match(/^[0-9a-fA-F]{24}$/)) {
+    return res.status(400).json({
+      success: false,
+      message: 'פורמט קטגוריה לא תקין (חייב להיות ObjectId)'
+    });
+  }
+
+  // ✅ 3. בדיקה שהקטגוריה קיימת במערכת
+  const category = await Category.findById(req.body.category);
+  if (!category) {
+    return res.status(400).json({
+      success: false,
+      message: 'הקטגוריה שנבחרה לא קיימת במערכת'
+    });
+  }
+
+  // ✅ 4. ניקוי שדות לא רצויים (למניעת המצאת שדות)
+  const allowedFields = [
+    'asin', 'name_he', 'name_en', 'description_he', 'description_en',
+    'price', 'originalPrice', 'discount', 'category', 'subcategory', 'tags',
+    'images', 'links', 'supplier', 'shipping', 'shippingInfo',
+    'specifications', 'features', 'variants', 'status', 'featured',
+    'costBreakdown', 'stock'
+  ];
+
+  // סינון שדות לא מורשים
+  const filteredBody = {};
+  for (const key of Object.keys(req.body)) {
+    if (allowedFields.includes(key)) {
+      filteredBody[key] = req.body[key];
     }
   }
+
+  // שימוש ב-body מסונן
+  req.body = filteredBody;
 
   // ניקוי ASIN ריק
   if (req.body.asin === '' || req.body.asin === null) {
@@ -194,6 +240,55 @@ export const createProduct = asyncHandler(async (req, res) => {
   }
 
   const product = await Product.create(req.body);
+
+  // עדכון מעקב תמונות
+  for (let i = 0; i < product.images.length; i++) {
+    const publicId = extractPublicId(product.images[i].url);
+    if (publicId) {
+      await ImageTracking.findOneAndUpdate(
+        { publicId },
+        {
+          $addToSet: {
+            usedIn: {
+              type: 'product',
+              referenceId: product._id,
+              fieldPath: `images.${i}`
+            }
+          },
+          status: 'active'
+        },
+        { upsert: true }
+      );
+    }
+  }
+
+  // עדכון תמונות ווריאנטים
+  if (product.variants && product.variants.length > 0) {
+    for (let v = 0; v < product.variants.length; v++) {
+      const variant = product.variants[v];
+      if (variant.images && variant.images.length > 0) {
+        for (let i = 0; i < variant.images.length; i++) {
+          const publicId = extractPublicId(variant.images[i].url);
+          if (publicId) {
+            await ImageTracking.findOneAndUpdate(
+              { publicId },
+              {
+                $addToSet: {
+                  usedIn: {
+                    type: 'product',
+                    referenceId: product._id,
+                    fieldPath: `variants.${v}.images.${i}`
+                  }
+                },
+                status: 'active'
+              },
+              { upsert: true }
+            );
+          }
+        }
+      }
+    }
+  }
 
   res.status(201).json({
     success: true,
@@ -312,11 +407,49 @@ export const deleteProduct = asyncHandler(async (req, res) => {
     });
   }
 
+  // איסוף publicIds של תמונות
+  const imagePublicIds = [];
+
+  // תמונות ראשיות של המוצר
+  product.images?.forEach(img => {
+    const publicId = extractPublicId(img.url);
+    if (publicId) imagePublicIds.push(publicId);
+  });
+
+  // תמונות ווריאנטים
+  product.variants?.forEach(variant => {
+    variant.images?.forEach(img => {
+      const publicId = extractPublicId(img.url);
+      if (publicId) imagePublicIds.push(publicId);
+    });
+  });
+
+  // מחיקת המוצר
   await product.deleteOne();
+
+  // עדכון מעקב תמונות
+  for (const publicId of imagePublicIds) {
+    const tracking = await ImageTracking.findOne({ publicId });
+
+    if (tracking) {
+      // הסרת ההפניה למוצר
+      tracking.usedIn = tracking.usedIn.filter(
+        use => !(use.type === 'product' && use.referenceId.equals(product._id))
+      );
+
+      // אם אין שימושים - סימון כ-unused
+      if (tracking.usedIn.length === 0) {
+        tracking.status = 'unused';
+      }
+
+      await tracking.save();
+    }
+  }
 
   res.json({
     success: true,
-    message: 'המוצר נמחק בהצלחה'
+    message: 'המוצר נמחק בהצלחה',
+    imagesMarkedUnused: imagePublicIds.length
   });
 });
 
