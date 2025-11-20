@@ -50,7 +50,7 @@ cartSchema.pre('save', function(next) {
 });
 
 // ⚡ Index for fast user cart lookup
-cartSchema.index({ user: 1 });
+// user index is created automatically by unique: true in schema
 
 const Cart = mongoose.model('Cart', cartSchema);
 

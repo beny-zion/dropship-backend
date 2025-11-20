@@ -71,7 +71,7 @@ const orderStatusSchema = new mongoose.Schema({
 
 // Index for faster queries
 orderStatusSchema.index({ order: 1, isActive: 1 });
-orderStatusSchema.index({ key: 1 });
+// key index is created automatically by unique: true in schema
 
 const OrderStatus = mongoose.model('OrderStatus', orderStatusSchema);
 

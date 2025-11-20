@@ -420,7 +420,7 @@ productSchema.index(
     partialFilterExpression: { asin: { $type: 'string', $gt: '' } }
   }
 );
-productSchema.index({ slug: 1 });
+// slug index is created automatically by unique: true in schema
 productSchema.index({ category: 1 });
 productSchema.index({ 'price.ils': 1 });
 productSchema.index({ 'rating.average': -1 });
