@@ -240,7 +240,7 @@ export const addToCart = async (req, res) => {
 export const updateCartItem = async (req, res) => {
   try {
     const { productId } = req.params;
-    const { quantity } = req.body;
+    const { quantity, variantSku = null } = req.body;
 
     if (quantity < 1 || quantity > 2) {
       return res.status(400).json({
@@ -257,8 +257,10 @@ export const updateCartItem = async (req, res) => {
       });
     }
 
+    // ⭐ חיפוש פריט לפי productId וגם variantSku
     const itemIndex = cart.items.findIndex(
-      item => item.product.toString() === productId
+      item => item.product.toString() === productId &&
+              (item.variantSku || null) === (variantSku || null)
     );
 
     if (itemIndex === -1) {
@@ -270,11 +272,29 @@ export const updateCartItem = async (req, res) => {
 
     // ⭐ Validate product still available
     const product = await Product.findById(productId);
-    if (!product || product.status !== 'active' || !product.stock.available) {
+    if (!product || product.status !== 'active') {
       return res.status(400).json({
         success: false,
         message: 'מוצר לא זמין יותר'
       });
+    }
+
+    // בדיקת זמינות - תלוי אם יש ווריאנט או לא
+    if (variantSku) {
+      const variant = product.variants?.find(v => v.sku === variantSku);
+      if (!variant || !variant.stock.available) {
+        return res.status(400).json({
+          success: false,
+          message: 'ווריאנט זה אזל מהמלאי'
+        });
+      }
+    } else {
+      if (!product.stock.available) {
+        return res.status(400).json({
+          success: false,
+          message: 'מוצר אזל מהמלאי'
+        });
+      }
     }
 
     cart.items[itemIndex].quantity = quantity;

@@ -40,8 +40,25 @@ export const generalRateLimiter = rateLimit({
   }
 });
 
+// 🔒 Rate Limiter עבור נתיבים ציבוריים - מגן מפני ניפוח views ו-DoS
+export const publicRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // דקה אחת
+  max: 30, // מקסימום 30 בקשות לדקה (למנוע ניפוח views)
+  standardHeaders: true, // מחזיר RateLimit-* headers
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'יותר מדי בקשות, אנא המתן רגע'
+  },
+  // Track by IP to prevent view inflation from same source
+  keyGenerator: (req) => {
+    return req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  }
+});
+
 export default {
   adminRateLimiter,
   authRateLimiter,
-  generalRateLimiter
+  generalRateLimiter,
+  publicRateLimiter
 };

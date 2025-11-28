@@ -175,22 +175,6 @@ const promotionalBannerSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
-// 6. Custom HTML/Component Schema
-const customComponentSchema = new mongoose.Schema({
-  name: String,
-  html: {
-    he: String,
-    en: String
-  },
-  css: String,
-  javascript: String,
-  componentType: {
-    type: String,
-    enum: ['html', 'react', 'video', 'countdown', 'newsletter'],
-    default: 'html'
-  }
-}, { _id: false });
-
 // ============================================
 // MAIN SECTION SCHEMA
 // ============================================
@@ -204,8 +188,6 @@ const sectionSchema = new mongoose.Schema({
       'category_grid',
       'product_carousel',
       'promotional_banner',
-      'custom_component',
-      'text_block',
       'image_gallery',
       'video_section'
     ],
@@ -240,8 +222,7 @@ const sectionSchema = new mongoose.Schema({
     heroBanner: heroBannerSchema,
     categoryGrid: categoryGridSchema,
     productCarousel: productCarouselSchema,
-    promotionalBanner: promotionalBannerSchema,
-    customComponent: customComponentSchema
+    promotionalBanner: promotionalBannerSchema
   },
 
   // Styling for the section container

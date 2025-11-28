@@ -2,7 +2,7 @@
 
 import express from 'express';
 import { auth, adminAuth } from '../middleware/auth.js';
-import { adminRateLimiter } from '../middleware/rateLimiter.js';
+import { adminRateLimiter, publicRateLimiter } from '../middleware/rateLimiter.js';
 import { sanitizeInput, validateMongoId } from '../middleware/validators.js';
 import { logAdminAction } from '../middleware/auditLogger.js';
 
@@ -11,22 +11,24 @@ import * as homePageController from '../controllers/homePageController.js';
 const router = express.Router();
 
 // ============================================
-// PUBLIC ROUTES
+// PUBLIC ROUTES (with Rate Limiting)
 // ============================================
 
 /**
  * @route   GET /api/homepage
  * @desc    Get active homepage layout
  * @access  Public
+ * @note    Rate limited to prevent view inflation and DoS
  */
-router.get('/', homePageController.getActiveHomePage);
+router.get('/', publicRateLimiter, homePageController.getActiveHomePage);
 
 /**
  * @route   GET /api/homepage/sections/:sectionId
  * @desc    Get specific section
  * @access  Public
+ * @note    Rate limited to prevent abuse
  */
-router.get('/sections/:sectionId', homePageController.getSection);
+router.get('/sections/:sectionId', publicRateLimiter, homePageController.getSection);
 
 // ============================================
 // ADMIN ROUTES (Protected)
