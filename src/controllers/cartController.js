@@ -1,10 +1,26 @@
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
+import SystemSettings from '../models/SystemSettings.js';
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS } from '../utils/cache.js';
 
 // Helper: Calculate cart totals from populated cart
 // ⚡ IMPORTANT: cart.items.product must be populated before calling this function
-const calculateCartTotals = (cart) => {
+// ✅ NOW USES DYNAMIC SETTINGS
+const calculateCartTotals = async (cart) => {
+  // קבל הגדרות משלוח דינמיות
+  let shippingRate = 49; // Default fallback
+  let freeShippingThreshold = 0;
+  let freeShippingEnabled = false;
+
+  try {
+    const settings = await SystemSettings.getSettings();
+    shippingRate = settings.shipping.flatRate.ils;
+    freeShippingEnabled = settings.shipping.freeShipping?.enabled || false;
+    freeShippingThreshold = settings.shipping.freeShipping?.threshold?.ils || 0;
+  } catch (error) {
+    console.error('Error loading settings in cart, using default ₪49:', error);
+  }
+
   let subtotal = 0;
   const validItems = [];
 
@@ -60,9 +76,12 @@ const calculateCartTotals = (cart) => {
   // מחיר ללא מע"מ (לצורכי תצוגה בלבד)
   const subtotalWithoutVat = subtotal - tax;
 
-  const freeShippingThreshold = parseFloat(process.env.FREE_SHIPPING_THRESHOLD) || 200;
-  const standardShippingCost = parseFloat(process.env.STANDARD_SHIPPING_COST) || 30;
-  const shipping = subtotal >= freeShippingThreshold ? 0 : standardShippingCost;
+  // ✅ Check if free shipping applies
+  let shipping = shippingRate;
+  if (freeShippingEnabled && freeShippingThreshold > 0 && subtotal >= freeShippingThreshold) {
+    shipping = 0;
+    console.log(`✅ Free shipping applied in cart! Subtotal ₪${subtotal} >= threshold ₪${freeShippingThreshold}`);
+  }
 
   // סה"כ = מחיר (כבר כולל מע"מ) + משלוח
   const total = subtotal + shipping;
@@ -92,7 +111,7 @@ export const getCart = async (req, res) => {
 
     // ⚡ חישוב בזמן אמת (cart כבר populated)
     const calcStart = Date.now();
-    const cartWithTotals = calculateCartTotals(cart);
+    const cartWithTotals = await calculateCartTotals(cart);
     console.log(`⏱️ Cart calculation took: ${Date.now() - calcStart}ms`);
 
     res.json({
@@ -208,7 +227,7 @@ export const addToCart = async (req, res) => {
     await cart.populate('items.product');
 
     // Return cart with calculated totals
-    const cartWithTotals = calculateCartTotals(cart);
+    const cartWithTotals = await calculateCartTotals(cart);
 
     res.json({
       success: true,
@@ -303,7 +322,7 @@ export const updateCartItem = async (req, res) => {
     // ⚡ Populate products before calculating totals
     await cart.populate('items.product');
 
-    const cartWithTotals = calculateCartTotals(cart);
+    const cartWithTotals = await calculateCartTotals(cart);
 
     res.json({
       success: true,
@@ -356,7 +375,7 @@ export const removeFromCart = async (req, res) => {
     // ⚡ Populate products before calculating totals
     await cart.populate('items.product');
 
-    const cartWithTotals = calculateCartTotals(cart);
+    const cartWithTotals = await calculateCartTotals(cart);
 
     res.json({
       success: true,

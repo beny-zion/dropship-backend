@@ -34,15 +34,25 @@ const adminLogSchema = new mongoose.Schema({
       'UPDATE_TRACKING',
       'ADD_ORDER_NOTES',
       'CANCEL_ORDER',
+      'REFRESH_ORDER_ITEMS',
       'VIEW_ALL_ORDERS',
       'VIEW_ORDER',
+      'VIEW_ORDER_STATISTICS',
+      'VIEW_ORDER_ALERTS',
+      'VIEW_ORDER_KPIS',
+      'VIEW_FILTERED_ORDERS',
+      'VIEW_ITEMS_BY_SUPPLIER',
       // Users
       'VIEW_ALL_USERS',
       'VIEW_USER',
       'VIEW_USER_ORDERS',
       'UPDATE_USER_STATUS',
       // Dashboard
-      'VIEW_DASHBOARD'
+      'VIEW_DASHBOARD',
+      // Settings
+      'VIEW_SETTINGS',
+      'UPDATE_SETTINGS',
+      'RESET_SETTINGS'
     ]
   },
 

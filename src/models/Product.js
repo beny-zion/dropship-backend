@@ -248,7 +248,14 @@ const productSchema = new mongoose.Schema({
     },
     supplierLink: {
       type: String,
-      trim: true
+      trim: true,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור ספק חייב להיות URL תקין'
+      }
     },
     barcode: String,
     weight: String
@@ -292,10 +299,35 @@ const productSchema = new mongoose.Schema({
   links: {
     amazon: {
       type: String,
-      required: false
+      required: false,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור אמזון חייב להיות URL תקין'
+      }
     },
-    affiliateUrl: String,
-    supplierUrl: String // קישור כללי לספק (לא אמזון)
+    affiliateUrl: {
+      type: String,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור affiliate חייב להיות URL תקין'
+      }
+    },
+    supplierUrl: {
+      type: String,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור ספק חייב להיות URL תקין'
+      }
+    }
   },
 
   // פרטי ספק

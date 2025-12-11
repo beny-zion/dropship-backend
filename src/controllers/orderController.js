@@ -3,6 +3,8 @@
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
+import SystemSettings from '../models/SystemSettings.js';
+import { calculateTotalShipping, calculateMaxEstimatedDelivery } from '../utils/shippingCalculator.js';
 
 // @desc    Get my orders with filtering and pagination
 // @route   GET /api/orders/my-orders
@@ -73,14 +75,7 @@ export const getOrderById = async (req, res) => {
       });
     }
 
-    // Debug logging
-    console.log('Order dates:', {
-      createdAt: order.createdAt,
-      createdAtType: typeof order.createdAt,
-      createdAtIsDate: order.createdAt instanceof Date,
-      updatedAt: order.updatedAt,
-      timelineTimestamp: order.timeline?.[0]?.timestamp
-    });
+    // ✅ SECURITY: Removed debug logging to prevent data exposure
 
     res.json({
       success: true,
@@ -117,12 +112,17 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    // ✅ FIX N+1: טען את כל המוצרים בשאילתה אחת
+    const productIds = items.map(item => item.product);
+    const products = await Product.find({ _id: { $in: productIds } });
+    const productMap = new Map(products.map(p => [p._id.toString(), p]));
+
     // Validate and calculate totals
     let subtotal = 0;
     const orderItems = [];
 
     for (const item of items) {
-      const product = await Product.findById(item.product);
+      const product = productMap.get(item.product.toString());
 
       if (!product) {
         return res.status(404).json({
@@ -204,15 +204,34 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Calculate shipping
-    const shippingCost = subtotal >= 200 ? 0 : 20;
+    // ✅ FIX: חישוב משלוח דינמי מהגדרות המערכת
+    let shippingCost = 49; // Default fallback
+    let estimatedDays = 14; // Default fallback
+    let freeShippingApplied = false;
 
-    // Calculate tax (Tax-Inclusive - המחיר כבר כולל מע"מ)
-    // נוסחה: מע"מ = מחיר × (18 / 118)
+    try {
+      const settings = await SystemSettings.getSettings();
+      shippingCost = settings.shipping.flatRate.ils;
+      estimatedDays = settings.shipping.estimatedDays;
+
+      // Check if free shipping applies
+      if (settings.shipping.freeShipping?.enabled &&
+          settings.shipping.freeShipping?.threshold?.ils > 0 &&
+          subtotal >= settings.shipping.freeShipping.threshold.ils) {
+        shippingCost = 0;
+        freeShippingApplied = true;
+        console.log(`✅ Free shipping applied! Subtotal ₪${subtotal} >= threshold ₪${settings.shipping.freeShipping.threshold.ils}`);
+      }
+    } catch (settingsError) {
+      console.error('Error loading system settings, using defaults:', settingsError);
+      // Continue with default values
+    }
+
+    // Calculate tax (המחירים כוללים מע"מ, זה רק לצורך הצגה)
     const taxRate = 0.18;
     const tax = subtotal * (taxRate / (1 + taxRate));
 
-    // Calculate total (מחיר כבר כולל מע"מ, רק מוסיפים משלוח)
+    // Calculate total (מחיר כבר כולל מע"מ, מוסיפים משלוח)
     const totalAmount = subtotal + shippingCost;
 
     // Generate order number
@@ -229,6 +248,10 @@ export const createOrder = async (req, res) => {
         shipping: shippingCost,
         tax,
         total: totalAmount
+      },
+      shipping: {
+        estimatedDays: estimatedDays,
+        method: 'flat_rate'
       },
       status: 'pending'
     });
@@ -247,12 +270,7 @@ export const createOrder = async (req, res) => {
     const populatedOrder = await Order.findById(order._id)
       .populate('items.product', 'name_he images price');
 
-    console.log('Order after populate:', {
-      _id: populatedOrder._id,
-      createdAt: populatedOrder.createdAt,
-      updatedAt: populatedOrder.updatedAt,
-      timeline: populatedOrder.timeline
-    });
+    // ✅ SECURITY: Removed debug logging to prevent data exposure
 
     res.status(201).json({
       success: true,

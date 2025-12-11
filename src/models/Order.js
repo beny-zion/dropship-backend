@@ -33,9 +33,83 @@ const orderItemSchema = new mongoose.Schema({
   },
   image: String,
   asin: String,
-  supplierLink: String, // קישור לרכישה אצל הספק
-  supplierName: String // שם הספק (Amazon, Karl Lagerfeld, וכו')
-}, { _id: false });
+  supplierLink: {
+    type: String,
+    validate: {
+      validator: function(v) {
+        // אם אין לינק - זה בסדר
+        if (!v) return true;
+        // אם יש לינק - חייב להיות URL תקין
+        return /^https?:\/\/.+\..+/.test(v);
+      },
+      message: 'קישור ספק חייב להיות URL תקין (http:// או https://)'
+    }
+  },
+  supplierName: String, // שם הספק (Amazon, Karl Lagerfeld, וכו')
+
+  // ✅ ניהול פריט ברמת פריט
+  itemStatus: {
+    type: String,
+    enum: [
+      'pending',                // ממתין לטיפול
+      'ordered_from_supplier',  // הוזמן מספק
+      'arrived_us_warehouse',   // הגיע למחסן ארה"ב
+      'shipped_to_israel',      // נשלח לישראל
+      'customs_israel',         // במכס בישראל
+      'arrived_israel',         // הגיע לישראל
+      'ready_for_delivery',     // מוכן למשלוח
+      'delivered',              // נמסר
+      'cancelled'               // בוטל
+    ],
+    default: 'pending'
+  },
+
+  // פרטי הזמנה מספק
+  supplierOrder: {
+    orderedAt: Date,
+    orderedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    supplierOrderNumber: String,      // מספר הזמנה של הספק
+    supplierTrackingNumber: String,   // מספר מעקב
+    actualCost: Number,               // עלות בפועל (אם שונה ממחיר צפוי)
+    notes: String
+  },
+
+  // ביטול פריט
+  cancellation: {
+    cancelled: {
+      type: Boolean,
+      default: false
+    },
+    reason: String,                   // סיבת ביטול
+    cancelledAt: Date,
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    refundAmount: Number,             // סכום החזר
+    refundProcessed: {
+      type: Boolean,
+      default: false
+    }
+  },
+
+  // היסטוריית שינויים
+  statusHistory: [{
+    status: String,
+    changedAt: {
+      type: Date,
+      default: Date.now
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    notes: String
+  }]
+}, { _id: true }); // ✅ שונה ל-true כדי שכל פריט יקבל _id משלו
 
 const shippingAddressSchema = new mongoose.Schema({
   fullName: {
@@ -104,6 +178,12 @@ const orderSchema = new mongoose.Schema({
     total: {
       type: Number,
       required: true
+    },
+    // ✅ שדות חדשים לניהול החזרים
+    adjustedTotal: Number,      // סה"כ אחרי ביטולים (מחושב)
+    totalRefunds: {             // סך כל ההחזרים
+      type: Number,
+      default: 0
     }
   },
   
@@ -124,6 +204,37 @@ const orderSchema = new mongoose.Schema({
         return !!statusExists;
       },
       message: props => `סטטוס '${props.value}' לא קיים במערכת`
+    }
+  },
+
+  // ✅ NEW: Materialized Computed Status Fields
+  computed: {
+    overallProgress: {
+      type: String,
+      enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+      default: 'pending'
+    },
+    completionPercentage: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0
+    },
+    hasActiveItems: {
+      type: Boolean,
+      default: true
+    },
+    allItemsDelivered: {
+      type: Boolean,
+      default: false
+    },
+    needsAttention: {
+      type: Boolean,
+      default: false
+    },
+    lastComputedAt: {
+      type: Date,
+      default: Date.now
     }
   },
 
@@ -151,17 +262,51 @@ const orderSchema = new mongoose.Schema({
   shipping: {
     method: {
       type: String,
-      enum: ['standard', 'express'],
-      default: 'standard'
+      enum: ['standard', 'express', 'flat_rate'],
+      default: 'flat_rate'
     },
     trackingNumber: String,
     carrier: String,
     estimatedDelivery: Date,
+    estimatedDays: Number,
     shippedAt: Date,
-    deliveredAt: Date
+    deliveredAt: Date,
+    // ✅ פירוט משלוח לפי ספק
+    breakdown: [{
+      supplier: String,
+      itemCount: Number,
+      subtotal: Number,
+      shippingCost: Number,
+      estimatedDays: Number
+    }]
   },
   
   notes: String,
+
+  // ✅ רישום החזרים
+  refunds: [{
+    amount: Number,
+    reason: String,
+    items: [{
+      type: mongoose.Schema.Types.ObjectId
+    }],
+    processedAt: Date,
+    processedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'processed', 'failed'],
+      default: 'pending'
+    },
+    refundMethod: String,
+    transactionId: String,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
 
   timeline: [{
     status: String,
@@ -212,6 +357,24 @@ const orderSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
+// ✅ MUST RUN FIRST: Compute status fields before anything else
+orderSchema.pre('save', function(next) {
+  // חישוב והשמה ב-computed
+  const activeItems = this.items.filter(item => !item.cancellation?.cancelled);
+  const deliveredItems = activeItems.filter(item => item.itemStatus === 'delivered');
+
+  this.computed = {
+    overallProgress: calculateOverallProgress(this),
+    completionPercentage: calculateCompletionPercentage(this),
+    hasActiveItems: activeItems.length > 0,
+    allItemsDelivered: activeItems.length > 0 && deliveredItems.length === activeItems.length,
+    needsAttention: calculateNeedsAttention(this),
+    lastComputedAt: new Date()
+  };
+
+  next();
+});
+
 // Add initial timeline entry
 orderSchema.pre('save', function(next) {
   if (this.isNew) {
@@ -236,6 +399,150 @@ orderSchema.post('save', async function(doc) {
     });
   }
 });
+
+// ✅ INDEXES FOR PERFORMANCE
+// Note: orderNumber already has unique: true in field definition, no need for duplicate index
+
+// Compound index for filtering and sorting
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ user: 1, createdAt: -1 });
+
+// Index for item status queries
+orderSchema.index({ 'items.itemStatus': 1 });
+orderSchema.index({ 'items.cancellation.cancelled': 1 });
+
+// Index for pricing queries
+orderSchema.index({ 'pricing.total': 1 });
+orderSchema.index({ 'pricing.adjustedTotal': 1 });
+
+// Index for date range queries
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ updatedAt: -1 });
+
+// Index for supplier orders
+orderSchema.index({ 'items.supplierOrder.orderedAt': 1 });
+orderSchema.index({ 'items.supplierName': 1 });
+
+// Sparse index for tracking numbers
+orderSchema.index({ 'shipping.trackingNumber': 1 }, { sparse: true });
+
+// ✅ NEW: Indexes for computed fields
+orderSchema.index({ 'computed.overallProgress': 1, createdAt: -1 });
+orderSchema.index({ 'computed.needsAttention': 1 });
+orderSchema.index({ 'computed.hasActiveItems': 1 });
+
+// ⚡ SCALE FIX: Compound indexes for complex queries
+// Query: "הזמנות שצריכות תשומת לב" (orders with alerts)
+orderSchema.index({
+  'computed.needsAttention': 1,
+  'computed.hasActiveItems': 1,
+  createdAt: -1
+});
+
+// Query: "הזמנות לפי ספק ותאריך" (orders by supplier)
+orderSchema.index({
+  'items.supplierName': 1,
+  'items.itemStatus': 1,
+  createdAt: -1
+});
+
+// Query: "הזמנות משתמש לפי סטטוס" (user orders by status)
+orderSchema.index({
+  user: 1,
+  status: 1,
+  createdAt: -1
+});
+
+// Query: "פריטים שממתינים להזמנה" (items waiting to order)
+orderSchema.index({
+  'items.itemStatus': 1,
+  'items.supplierName': 1,
+  'items.cancellation.cancelled': 1
+});
+
+// ============================================
+// ✅ COMPUTED STATUS CALCULATION FUNCTIONS
+// ============================================
+
+/**
+ * חישוב overall progress מסטטוסים של פריטים
+ */
+function calculateOverallProgress(order) {
+  const activeItems = order.items.filter(item => !item.cancellation?.cancelled);
+
+  // אם אין פריטים פעילים - ההזמנה בוטלה
+  if (activeItems.length === 0) return 'cancelled';
+
+  // אם כל הפריטים נמסרו - הושלם
+  const allDelivered = activeItems.every(item => item.itemStatus === 'delivered');
+  if (allDelivered) return 'completed';
+
+  // אם יש לפחות פריט אחד שהוזמן או בדרך - בתהליך
+  const anyInProgress = activeItems.some(item =>
+    ['ordered_from_supplier', 'arrived_us_warehouse', 'shipped_to_israel',
+     'customs_israel', 'arrived_israel', 'ready_for_delivery', 'in_transit'].includes(item.itemStatus)
+  );
+  if (anyInProgress) return 'in_progress';
+
+  // אחרת - עדיין ממתין
+  return 'pending';
+}
+
+/**
+ * חישוב אחוז השלמה
+ */
+function calculateCompletionPercentage(order) {
+  const activeItems = order.items.filter(item => !item.cancellation?.cancelled);
+  if (activeItems.length === 0) return 100; // אם הכל בוטל - 100%
+
+  const deliveredCount = activeItems.filter(item => item.itemStatus === 'delivered').length;
+  return Math.round((deliveredCount / activeItems.length) * 100);
+}
+
+/**
+ * בדיקה אם צריך תשומת לב
+ */
+function calculateNeedsAttention(order) {
+  const activeItems = order.items.filter(item => !item.cancellation?.cancelled);
+
+  if (activeItems.length === 0) return false;
+
+  // ✅ בדיקה מיוחדת לפריט יחיד - רק אם תקוע
+  if (activeItems.length === 1) {
+    const singleItem = activeItems[0];
+
+    // אם הפריט delivered או pending - לא צריך תשומת לב
+    if (singleItem.itemStatus === 'delivered' || singleItem.itemStatus === 'pending') {
+      return false;
+    }
+
+    // אם הפריט ordered או in_transit - בדוק אם תקוע
+    if (['ordered_from_supplier', 'in_transit'].includes(singleItem.itemStatus)) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const lastUpdate = singleItem.supplierOrder?.lastUpdated ||
+                        singleItem.supplierOrder?.orderedAt ||
+                        order.createdAt;
+      return new Date(lastUpdate) < sevenDaysAgo;
+    }
+
+    // אחרת - לא צריך תשומת לב
+    return false;
+  }
+
+  // הזמנות pending או payment_hold (רק עם 2+ פריטים)
+  if (order.status === 'pending' || order.status === 'payment_hold') return true;
+
+  // פריטים תקועים (לא עודכנו ב-7 ימים) - למקרים עם 2+ פריטים
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const hasStuckItems = activeItems.some(item => {
+    if (!['ordered_from_supplier', 'in_transit'].includes(item.itemStatus)) return false;
+
+    const lastUpdate = item.supplierOrder?.lastUpdated || item.supplierOrder?.orderedAt || order.createdAt;
+    return new Date(lastUpdate) < sevenDaysAgo;
+  });
+
+  return hasStuckItems;
+}
 
 const Order = mongoose.model('Order', orderSchema);
 

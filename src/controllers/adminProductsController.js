@@ -581,6 +581,42 @@ export const updateProductStatus = asyncHandler(async (req, res) => {
   });
 });
 
+// עדכון זמינות מוצר וווריאנטים
+export const updateProductAvailability = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { productAvailable, variants } = req.body;
+
+  const product = await Product.findById(id);
+
+  if (!product) {
+    res.status(404);
+    throw new Error('מוצר לא נמצא');
+  }
+
+  // עדכון זמינות מוצר ראשי
+  if (typeof productAvailable === 'boolean') {
+    product.stock.available = productAvailable;
+  }
+
+  // עדכון זמינות ווריאנטים
+  if (variants && Array.isArray(variants)) {
+    variants.forEach(({ sku, available }) => {
+      const variant = product.variants.find(v => v.sku === sku);
+      if (variant && typeof available === 'boolean') {
+        variant.stock.available = available;
+      }
+    });
+  }
+
+  await product.save();
+
+  res.json({
+    success: true,
+    message: 'הזמינות עודכנה בהצלחה',
+    data: product
+  });
+});
+
 export default {
   getAllProducts,
   getProductById,
@@ -590,5 +626,6 @@ export default {
   updateStock,
   toggleFeatured,
   bulkDeleteProducts,
-  updateProductStatus
+  updateProductStatus,
+  updateProductAvailability
 };

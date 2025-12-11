@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import csrf from 'csurf'; // 🔒 CSRF Protection
 
 import connectDB from './config/db.js';
 import { generalRateLimiter } from './middleware/rateLimiter.js';
@@ -24,6 +25,7 @@ import categoryRoutes from './routes/categoryRoutes.js';
 import homePageRoutes from './routes/homePageRoutes.js';
 import orderStatusRoutes from './routes/orderStatusRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
 
 dotenv.config();
 
@@ -50,15 +52,37 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser()); // 🍪 Parse cookies for authentication
 app.use(morgan('dev'));
 
+// 🔒 CSRF Protection Setup
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production' // HTTPS only in production
+  }
+});
+
 // 🔒 Sanitize public responses - remove sensitive data from client responses
 app.use(sanitizePublicResponse);
+
+// 🔒 CSRF Token Endpoint - Must be called before making protected requests
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({
+    success: true,
+    csrfToken: req.csrfToken()
+  });
+});
 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/admin', adminRoutes); // ⭐ Complete Admin Panel
+
+// 🔒 Protected Admin Routes - Require CSRF Token
+app.use('/api/admin', csrfProtection, adminRoutes); // ⭐ Complete Admin Panel
+
 app.use('/api/cart', cartRoutes);
-app.use('/api/orders', orderRoutes);
+
+// 🔒 Protected Order Routes - Require CSRF Token
+app.use('/api/orders', csrfProtection, orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/users/addresses', addressRoutes);
 app.use('/api/upload', uploadRoutes); // 📤 Image Upload (Cloudinary)
@@ -66,6 +90,7 @@ app.use('/api/categories', categoryRoutes); // 🏷️ Categories Management
 app.use('/api/homepage', homePageRoutes); // 🏠 Dynamic HomePage CMS
 app.use('/api/order-statuses', orderStatusRoutes); // 📋 Order Statuses Management
 app.use('/api/admin/media', mediaRoutes); // 🖼️ Media Management (Cloudinary Tracking)
+app.use('/api/settings', settingsRoutes); // ⚙️ Public Settings (shipping, etc.)
 
 // Health check
 app.get('/health', (req, res) => {
@@ -106,7 +131,8 @@ app.get('/', (req, res) => {
         'Rate Limiting',
         'Audit Logging',
         'Input Validation',
-        'Token Blacklist'
+        'Token Blacklist',
+        'CSRF Protection' // ✅ New!
       ],
       admin: [
         'Dashboard with Analytics',
@@ -118,6 +144,24 @@ app.get('/', (req, res) => {
       ]
     }
   });
+});
+
+// 🔒 CSRF Error Handler - Must come before 404
+app.use((err, req, res, next) => {
+  if (err.code === 'EBADCSRFTOKEN') {
+    console.warn('⚠️ CSRF token validation failed:', {
+      ip: req.ip,
+      path: req.path,
+      method: req.method
+    });
+
+    return res.status(403).json({
+      success: false,
+      message: 'Invalid CSRF token. Please refresh the page and try again.',
+      code: 'CSRF_ERROR'
+    });
+  }
+  next(err);
 });
 
 // 404 Handler

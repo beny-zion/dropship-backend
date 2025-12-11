@@ -10,13 +10,7 @@ export const adminRateLimiter = rateLimit({
     message: 'יותר מדי בקשות מהכתובת הזו, נסה שוב בעוד 15 דקות'
   },
   standardHeaders: true, // מחזיר RateLimit-* headers
-  legacyHeaders: false, // מכבה X-RateLimit-* headers
-  // אפשר לעקוף עבור IPs ספציפיים (למשל staging server)
-  skip: (req) => {
-    // אם יש IP של staging/dev - לא להגביל
-    const whitelistedIPs = process.env.RATE_LIMIT_WHITELIST?.split(',') || [];
-    return whitelistedIPs.includes(req.ip);
-  }
+  legacyHeaders: false // מכבה X-RateLimit-* headers
 });
 
 // 🔒 Rate Limiter עבור Auth routes - מגן מפני brute force
@@ -49,10 +43,6 @@ export const publicRateLimiter = rateLimit({
   message: {
     success: false,
     message: 'יותר מדי בקשות, אנא המתן רגע'
-  },
-  // Track by IP to prevent view inflation from same source
-  keyGenerator: (req) => {
-    return req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
   }
 });
 
