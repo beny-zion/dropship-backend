@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "seed": "node scripts/seedProducts.js",
     "seed:categories": "node scripts/seedCategories.js",
     "migrate:categories": "node scripts/migrateProductCategories.js"
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.2",
+    "jest": "^30.2.0",
     "nodemon": "^3.0.2"
   }
 }

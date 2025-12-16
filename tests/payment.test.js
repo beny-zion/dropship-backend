@@ -10,6 +10,15 @@
 
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import axios from 'axios';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// טען משתני סביבה מ-.env
+dotenv.config({ path: join(__dirname, '../.env') });
 
 // נתוני בדיקה - כרטיס אמיתי לבדיקות מ-Hyp Pay
 const TEST_CARD = {
