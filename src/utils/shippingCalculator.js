@@ -1,10 +1,120 @@
 /**
- * Shipping Calculator - Multiple Suppliers Support
+ * Shipping Calculator - Simplified Version
  *
- * מחשבון משלוח מתקדם עם תמיכה במספר ספקים
+ * מחשבון משלוח מפושט עם תמיכה במשלוח קבוע מ-SystemSettings
+ * גרסה חדשה: 49₪ קבוע (או לפי SystemSettings)
  */
 
-// הגדרות משלוח לפי ספק
+import SystemSettings from '../models/SystemSettings.js';
+
+// ============================================
+// NEW CODE - SIMPLIFIED SHIPPING (49₪ קבוע)
+// ============================================
+
+/**
+ * חישוב משלוח פשוט - מחיר קבוע מ-SystemSettings
+ *
+ * @param {Array} items - פריטי ההזמנה
+ * @param {Object} settings - הגדרות מערכת (אופציונלי)
+ * @param {string} currency - USD או ILS
+ * @returns {Object} { shipping, freeShipping, breakdown }
+ */
+export async function calculateShipping(items, settings = null, currency = 'ILS') {
+  // טען הגדרות אם לא קיבלנו
+  if (!settings) {
+    settings = await SystemSettings.getSettings();
+  }
+
+  // סינון פריטים פעילים (לא מבוטלים)
+  const activeItems = items.filter(item => {
+    const isCancelled = item.status === 'cancelled' ||
+                       item.itemStatus === 'cancelled' ||
+                       item.cancellation?.cancelled === true;
+    return !isCancelled;
+  });
+
+  // אין פריטים פעילים = אין משלוח
+  if (activeItems.length === 0) {
+    return {
+      shipping: 0,
+      freeShipping: false,
+      breakdown: {
+        activeItems: 0,
+        subtotal: 0,
+        threshold: settings.shipping.freeShipping?.threshold?.[currency.toLowerCase()] || 0,
+        flatRate: settings.shipping.flatRate[currency.toLowerCase()]
+      }
+    };
+  }
+
+  // חישוב סכום ביניים
+  const subtotal = activeItems.reduce((sum, item) => {
+    const price = item.price || 0;
+    const quantity = item.quantity || 1;
+    return sum + (price * quantity);
+  }, 0);
+
+  // בדיקת משלוח חינם
+  const freeShippingEnabled = settings.shipping.freeShipping?.enabled || false;
+  const freeShippingThreshold = settings.shipping.freeShipping?.threshold?.[currency.toLowerCase()] || 0;
+
+  if (freeShippingEnabled && subtotal >= freeShippingThreshold) {
+    return {
+      shipping: 0,
+      freeShipping: true,
+      breakdown: {
+        activeItems: activeItems.length,
+        subtotal,
+        threshold: freeShippingThreshold,
+        flatRate: settings.shipping.flatRate[currency.toLowerCase()]
+      }
+    };
+  }
+
+  // משלוח רגיל - מחיר קבוע
+  return {
+    shipping: settings.shipping.flatRate[currency.toLowerCase()],
+    freeShipping: false,
+    breakdown: {
+      activeItems: activeItems.length,
+      subtotal,
+      threshold: freeShippingThreshold,
+      flatRate: settings.shipping.flatRate[currency.toLowerCase()]
+    }
+  };
+}
+
+/**
+ * פונקציה סינכרונית לתאימות אחורה
+ * משתמשת בברירת מחדל של 49₪
+ *
+ * @param {Array} items - פריטי ההזמנה
+ * @param {string} currency - USD או ILS
+ * @returns {number} עלות משלוח
+ */
+export function calculateShippingSync(items, currency = 'ILS') {
+  // סינון פריטים פעילים
+  const activeItems = items.filter(item => {
+    const isCancelled = item.status === 'cancelled' ||
+                       item.itemStatus === 'cancelled' ||
+                       item.cancellation?.cancelled === true;
+    return !isCancelled;
+  });
+
+  // אין פריטים פעילים = אין משלוח
+  if (activeItems.length === 0) {
+    return 0;
+  }
+
+  // ברירת מחדל
+  return currency.toUpperCase() === 'ILS' ? 49 : 15;
+}
+
+// ============================================
+// OLD CODE - DEPRECATED (for backward compatibility)
+// קוד ישן - לא בשימוש, נשמר לתאימות אחורה
+// ============================================
+
 const SUPPLIER_SHIPPING_RATES = {
   'Amazon': {
     baseCost: 15, // ₪
@@ -24,10 +134,12 @@ const SUPPLIER_SHIPPING_RATES = {
 };
 
 /**
+ * @deprecated - השתמש ב-calculateShipping() במקום
  * קיבוץ פריטים לפי ספק
  */
 export function groupItemsBySupplier(items) {
-  // ✅ Validation
+  console.warn('[DEPRECATED] groupItemsBySupplier is deprecated. Use calculateShipping() instead.');
+
   if (!items) {
     throw new Error('Items parameter is required');
   }
@@ -43,7 +155,6 @@ export function groupItemsBySupplier(items) {
   const supplierGroups = {};
 
   items.forEach((item, index) => {
-    // ✅ Validate item structure
     if (!item || typeof item !== 'object') {
       throw new TypeError(`Item at index ${index} is invalid`);
     }
@@ -75,12 +186,13 @@ export function groupItemsBySupplier(items) {
 }
 
 /**
+ * @deprecated - השתמש ב-calculateShipping() במקום
  * חישוב עלות משלוח לספק בודד
  */
-export function calculateSupplierShipping(supplierName, subtotal, itemCount) {
+export function calculateSupplierShipping(supplierName, subtotal) {
+  console.warn('[DEPRECATED] calculateSupplierShipping is deprecated. Use calculateShipping() instead.');
   const rates = SUPPLIER_SHIPPING_RATES[supplierName] || SUPPLIER_SHIPPING_RATES['Default'];
 
-  // אם הסכום עובר את הסף - משלוח חינם
   if (subtotal >= rates.freeShippingThreshold) {
     return 0;
   }
@@ -89,10 +201,12 @@ export function calculateSupplierShipping(supplierName, subtotal, itemCount) {
 }
 
 /**
+ * @deprecated - השתמש ב-calculateShipping() במקום
  * חישוב עלות משלוח כוללת להזמנה
  */
 export function calculateTotalShipping(items) {
-  // ✅ Validation
+  console.warn('[DEPRECATED] calculateTotalShipping is deprecated. Use calculateShipping() instead.');
+
   if (!items) {
     throw new Error('Items parameter is required for shipping calculation');
   }
@@ -142,16 +256,20 @@ export function calculateTotalShipping(items) {
 }
 
 /**
+ * @deprecated
  * קבלת מידע על ספק
  */
 export function getSupplierInfo(supplierName) {
+  console.warn('[DEPRECATED] getSupplierInfo is deprecated.');
   return SUPPLIER_SHIPPING_RATES[supplierName] || SUPPLIER_SHIPPING_RATES['Default'];
 }
 
 /**
+ * @deprecated
  * חישוב זמן אספקה משוער מקסימלי
  */
 export function calculateMaxEstimatedDelivery(items) {
+  console.warn('[DEPRECATED] calculateMaxEstimatedDelivery is deprecated.');
   const supplierGroups = groupItemsBySupplier(items);
   let maxDays = 0;
 
@@ -165,7 +283,16 @@ export function calculateMaxEstimatedDelivery(items) {
   return maxDays;
 }
 
+// ============================================
+// EXPORTS
+// ============================================
+
 export default {
+  // New API (preferred)
+  calculateShipping,
+  calculateShippingSync,
+
+  // Old API (deprecated, for backward compatibility)
   groupItemsBySupplier,
   calculateSupplierShipping,
   calculateTotalShipping,
