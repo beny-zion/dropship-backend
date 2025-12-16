@@ -4,7 +4,6 @@ import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/Product.js';
 import SystemSettings from '../models/SystemSettings.js';
-import { calculateTotalShipping, calculateMaxEstimatedDelivery } from '../utils/shippingCalculator.js';
 
 // @desc    Get my orders with filtering and pagination
 // @route   GET /api/orders/my-orders
