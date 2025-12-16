@@ -1,70 +1,59 @@
 /**
- * Item Status Constants
+ * Item Status Constants - SIMPLIFIED
  *
- * סטטוסים של פריטים בהזמנה
+ * ✨ NEW: פושט מ-9 ל-7 סטטוסים
+ * הוסרו: customs_israel (מוזג ל-in_transit), ready_for_delivery (מוזג ל-arrived_israel)
  */
 
 export const ITEM_STATUS = {
-  PENDING: 'pending',
-  ORDERED_FROM_SUPPLIER: 'ordered_from_supplier',
-  ARRIVED_US_WAREHOUSE: 'arrived_us_warehouse',
-  SHIPPED_TO_ISRAEL: 'shipped_to_israel',
-  CUSTOMS_ISRAEL: 'customs_israel',
-  ARRIVED_ISRAEL: 'arrived_israel',
-  READY_FOR_DELIVERY: 'ready_for_delivery',
-  DELIVERED: 'delivered',
-  CANCELLED: 'cancelled'
+  PENDING: 'pending',                      // ממתין להזמנה מספק
+  ORDERED: 'ordered',                      // הוזמן מספק (ממתין לקבלה)
+  IN_TRANSIT: 'in_transit',                // בדרך (ארה"ב → ישראל, כולל מכס)
+  ARRIVED_ISRAEL: 'arrived_israel',        // הגיע למחסן בישראל (מוכן למשלוח)
+  SHIPPED_TO_CUSTOMER: 'shipped_to_customer', // נשלח ללקוח
+  DELIVERED: 'delivered',                  // נמסר ללקוח
+  CANCELLED: 'cancelled'                   // בוטל
 };
 
 export const ITEM_STATUS_LABELS = {
-  [ITEM_STATUS.PENDING]: 'ממתין לטיפול',
-  [ITEM_STATUS.ORDERED_FROM_SUPPLIER]: 'הוזמן מספק',
-  [ITEM_STATUS.ARRIVED_US_WAREHOUSE]: 'הגיע למחסן ארה"ב',
-  [ITEM_STATUS.SHIPPED_TO_ISRAEL]: 'נשלח לישראל',
-  [ITEM_STATUS.CUSTOMS_ISRAEL]: 'במכס בישראל',
+  [ITEM_STATUS.PENDING]: 'ממתין להזמנה',
+  [ITEM_STATUS.ORDERED]: 'הוזמן מספק',
+  [ITEM_STATUS.IN_TRANSIT]: 'בדרך לישראל',
   [ITEM_STATUS.ARRIVED_ISRAEL]: 'הגיע לישראל',
-  [ITEM_STATUS.READY_FOR_DELIVERY]: 'מוכן למשלוח',
-  [ITEM_STATUS.DELIVERED]: 'נמסר',
+  [ITEM_STATUS.SHIPPED_TO_CUSTOMER]: 'נשלח ללקוח',
+  [ITEM_STATUS.DELIVERED]: 'נמסר ללקוח',
   [ITEM_STATUS.CANCELLED]: 'בוטל'
 };
 
 export const ITEM_STATUS_COLORS = {
   [ITEM_STATUS.PENDING]: 'bg-gray-100 text-gray-700',
-  [ITEM_STATUS.ORDERED_FROM_SUPPLIER]: 'bg-blue-100 text-blue-700',
-  [ITEM_STATUS.ARRIVED_US_WAREHOUSE]: 'bg-indigo-100 text-indigo-700',
-  [ITEM_STATUS.SHIPPED_TO_ISRAEL]: 'bg-purple-100 text-purple-700',
-  [ITEM_STATUS.CUSTOMS_ISRAEL]: 'bg-pink-100 text-pink-700',
+  [ITEM_STATUS.ORDERED]: 'bg-blue-100 text-blue-700',
+  [ITEM_STATUS.IN_TRANSIT]: 'bg-purple-100 text-purple-700',
   [ITEM_STATUS.ARRIVED_ISRAEL]: 'bg-cyan-100 text-cyan-700',
-  [ITEM_STATUS.READY_FOR_DELIVERY]: 'bg-yellow-100 text-yellow-700',
+  [ITEM_STATUS.SHIPPED_TO_CUSTOMER]: 'bg-indigo-100 text-indigo-700',
   [ITEM_STATUS.DELIVERED]: 'bg-green-100 text-green-700',
   [ITEM_STATUS.CANCELLED]: 'bg-red-100 text-red-700'
 };
 
-// Valid status transitions (אילו מעברים מותרים)
+// ✨ NEW: Simplified valid status transitions
 export const ITEM_STATUS_TRANSITIONS = {
   [ITEM_STATUS.PENDING]: [
-    ITEM_STATUS.ORDERED_FROM_SUPPLIER,
+    ITEM_STATUS.ORDERED,
     ITEM_STATUS.CANCELLED
   ],
-  [ITEM_STATUS.ORDERED_FROM_SUPPLIER]: [
-    ITEM_STATUS.ARRIVED_US_WAREHOUSE,
+  [ITEM_STATUS.ORDERED]: [
+    ITEM_STATUS.IN_TRANSIT,
     ITEM_STATUS.CANCELLED
   ],
-  [ITEM_STATUS.ARRIVED_US_WAREHOUSE]: [
-    ITEM_STATUS.SHIPPED_TO_ISRAEL,
+  [ITEM_STATUS.IN_TRANSIT]: [
+    ITEM_STATUS.ARRIVED_ISRAEL,
     ITEM_STATUS.CANCELLED
-  ],
-  [ITEM_STATUS.SHIPPED_TO_ISRAEL]: [
-    ITEM_STATUS.CUSTOMS_ISRAEL,
-    ITEM_STATUS.ARRIVED_ISRAEL  // אפשרות לדלג על מכס אם לא רלוונטי
-  ],
-  [ITEM_STATUS.CUSTOMS_ISRAEL]: [
-    ITEM_STATUS.ARRIVED_ISRAEL
   ],
   [ITEM_STATUS.ARRIVED_ISRAEL]: [
-    ITEM_STATUS.READY_FOR_DELIVERY
+    ITEM_STATUS.SHIPPED_TO_CUSTOMER,
+    ITEM_STATUS.DELIVERED  // אפשרות לדלג ישירות למסירה (איסוף עצמי)
   ],
-  [ITEM_STATUS.READY_FOR_DELIVERY]: [
+  [ITEM_STATUS.SHIPPED_TO_CUSTOMER]: [
     ITEM_STATUS.DELIVERED
   ],
   [ITEM_STATUS.DELIVERED]: [],
@@ -73,15 +62,24 @@ export const ITEM_STATUS_TRANSITIONS = {
 
 // הודעות ברירת מחדל לכל סטטוס
 export const ITEM_STATUS_MESSAGES = {
-  [ITEM_STATUS.PENDING]: 'הפריט ממתין לטיפול',
-  [ITEM_STATUS.ORDERED_FROM_SUPPLIER]: 'הפריט הוזמן מהספק',
-  [ITEM_STATUS.ARRIVED_US_WAREHOUSE]: 'הפריט הגיע למחסן בארה"ב',
-  [ITEM_STATUS.SHIPPED_TO_ISRAEL]: 'הפריט נשלח לישראל',
-  [ITEM_STATUS.CUSTOMS_ISRAEL]: 'הפריט במכס בישראל',
-  [ITEM_STATUS.ARRIVED_ISRAEL]: 'הפריט הגיע לישראל',
-  [ITEM_STATUS.READY_FOR_DELIVERY]: 'הפריט מוכן למשלוח',
+  [ITEM_STATUS.PENDING]: 'הפריט ממתין להזמנה מהספק',
+  [ITEM_STATUS.ORDERED]: 'הפריט הוזמן מהספק',
+  [ITEM_STATUS.IN_TRANSIT]: 'הפריט בדרך לישראל',
+  [ITEM_STATUS.ARRIVED_ISRAEL]: 'הפריט הגיע למחסן בישראל',
+  [ITEM_STATUS.SHIPPED_TO_CUSTOMER]: 'הפריט נשלח ללקוח',
   [ITEM_STATUS.DELIVERED]: 'הפריט נמסר ללקוח',
   [ITEM_STATUS.CANCELLED]: 'הפריט בוטל'
+};
+
+// ✨ NEW: משקלות התקדמות לחישוב אחוז השלמה
+export const ITEM_STATUS_WEIGHTS = {
+  [ITEM_STATUS.PENDING]: 0,
+  [ITEM_STATUS.ORDERED]: 20,
+  [ITEM_STATUS.IN_TRANSIT]: 50,
+  [ITEM_STATUS.ARRIVED_ISRAEL]: 75,
+  [ITEM_STATUS.SHIPPED_TO_CUSTOMER]: 90,
+  [ITEM_STATUS.DELIVERED]: 100,
+  [ITEM_STATUS.CANCELLED]: 0
 };
 
 /**

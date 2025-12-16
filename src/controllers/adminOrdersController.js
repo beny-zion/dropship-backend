@@ -765,16 +765,53 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ✅ NEW: Use computed fields for faster queries
-  let matchStage = {
-    'computed.overallProgress': { $nin: ['cancelled'] }
-  };
+  // ✅ SEARCH: Handle search parameter first
+  let searchCondition = null;
 
-  // בניית פילטר לפי הבחירה
+  if (req.query.search) {
+    // SECURITY: Prevent NoSQL Injection
+    if (typeof req.query.search !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid search parameter'
+      });
+    }
+
+    // Sanitize and limit search term
+    const searchTerm = String(req.query.search).trim().substring(0, 100);
+
+    if (searchTerm.length > 0) {
+      // Escape special regex characters
+      const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Find users matching the search
+      const searchUsers = await User.find({
+        $or: [
+          { email: { $regex: escapedSearch, $options: 'i' } },
+          { firstName: { $regex: escapedSearch, $options: 'i' } },
+          { lastName: { $regex: escapedSearch, $options: 'i' } }
+        ]
+      }).select('_id');
+
+      const userIds = searchUsers.map(u => u._id);
+
+      // Build search condition
+      searchCondition = {
+        $or: [
+          { orderNumber: { $regex: escapedSearch, $options: 'i' } },
+          { user: { $in: userIds } }
+        ]
+      };
+    }
+  }
+
+  // ✅ Build filter based on selection
+  let filterCondition = {};
+
   switch (filter) {
     case 'urgent':
       // דחופות - צריכות תשומת לב
-      matchStage = {
+      filterCondition = {
         'computed.needsAttention': true,
         'computed.overallProgress': { $nin: ['completed', 'cancelled'] }
       };
@@ -782,7 +819,7 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
 
     case 'stuck':
       // תקועות - צריכות תשומת לב ויש פריטים פעילים
-      matchStage = {
+      filterCondition = {
         'computed.needsAttention': true,
         'computed.hasActiveItems': true,
         'computed.overallProgress': { $nin: ['completed', 'cancelled'] }
@@ -791,7 +828,7 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
 
     case 'cancelled_today':
       // בוטלו היום
-      matchStage = {
+      filterCondition = {
         'computed.overallProgress': 'cancelled',
         updatedAt: { $gte: today }
       };
@@ -799,7 +836,7 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
 
     case 'needs_tracking':
       // צריך מספר מעקב
-      matchStage = {
+      filterCondition = {
         'items.itemStatus': 'in_transit',
         'items.supplierOrder.trackingNumber': { $in: ['', null] },
         'items.cancellation.cancelled': { $ne: true },
@@ -810,10 +847,34 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
     case 'all':
     default:
       // הכל - רק לא מבוטלות
-      matchStage = {
+      filterCondition = {
         'computed.overallProgress': { $nin: ['cancelled'] }
       };
       break;
+  }
+
+  // ✅ Combine search and filter conditions
+  let matchStage = {};
+
+  if (searchCondition) {
+    // אם יש חיפוש - שלב עם הפילטר
+    matchStage = {
+      $and: [
+        searchCondition,
+        filterCondition
+      ]
+    };
+  } else {
+    // אם אין חיפוש - רק הפילטר
+    matchStage = filterCondition;
+  }
+
+  // 🐛 DEBUG: Log query for debugging
+  if (req.query.search) {
+    console.log('🔍 Search Query:', {
+      searchTerm: req.query.search,
+      matchStage: JSON.stringify(matchStage, null, 2)
+    });
   }
 
   const orders = await Order.find(matchStage)

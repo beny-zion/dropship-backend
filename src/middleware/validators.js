@@ -114,8 +114,14 @@ export const validateOrderStatus = [
 // ✅ Validation ל-ID של MongoDB
 export const validateMongoId = [
   param('id')
+    .optional()
     .isMongoId()
     .withMessage('מזהה לא תקין'),
+
+  param('productId')
+    .optional()
+    .isMongoId()
+    .withMessage('מזהה מוצר לא תקין'),
 
   validate
 ];

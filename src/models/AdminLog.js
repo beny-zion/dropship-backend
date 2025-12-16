@@ -26,9 +26,18 @@ const adminLogSchema = new mongoose.Schema({
       'UPDATE_PRODUCT_STOCK',
       'TOGGLE_PRODUCT_FEATURED',
       'UPDATE_PRODUCT_STATUS',
+      'UPDATE_PRODUCT_AVAILABILITY',
       'BULK_DELETE_PRODUCTS',
       'VIEW_PRODUCTS',
       'VIEW_PRODUCT',
+      // Product Availability (New Centralized System)
+      'UPDATE_AVAILABILITY_V2',
+      'BATCH_UPDATE_AVAILABILITY',
+      'CHECK_AVAILABILITY',
+      'VIEW_AVAILABILITY_HISTORY',
+      'VIEW_PRICE_HISTORY',
+      'RECORD_INVENTORY_CHECK',
+      'VIEW_INVENTORY_CHECK',
       // Orders
       'UPDATE_ORDER_STATUS',
       'UPDATE_TRACKING',

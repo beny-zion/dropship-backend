@@ -137,7 +137,82 @@ const productSchema = new mongoose.Schema({
       default: Date.now
     }
   },
-  
+
+  // ✅ מעקב אחר מחירים (חדש!)
+  priceTracking: {
+    lastCheckedPrice: {
+      usd: Number,
+      ils: Number,
+      checkedAt: Date,
+      checkedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    },
+    priceAlertThreshold: {
+      type: Number,
+      default: 10, // התראה על עליה מעל 10%
+      min: 0,
+      max: 100
+    },
+    priceHistory: [{
+      price: {
+        usd: Number,
+        ils: Number
+      },
+      recordedAt: {
+        type: Date,
+        default: Date.now
+      },
+      source: {
+        type: String,
+        enum: ['manual', 'order_actual_cost', 'inventory_check', 'supplier_update']
+      },
+      recordedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    }]
+  },
+
+  // ✅ מעקב אחר בדיקות זמינות (Inventory Checks) - חדש!
+  inventoryChecks: {
+    lastChecked: {
+      timestamp: Date,
+      checkedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      checkedByName: String, // cache שם המשתמש
+      result: {
+        type: String,
+        enum: ['available', 'unavailable', 'partial'] // partial = חלק מהווריאנטים זמין
+      },
+      notes: String
+    },
+    history: [{
+      timestamp: {
+        type: Date,
+        default: Date.now
+      },
+      checkedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      checkedByName: String,
+      result: {
+        type: String,
+        enum: ['available', 'unavailable', 'partial']
+      },
+      notes: String,
+      // אפשרות לשמור snapshot של סטטוס הווריאנטים
+      variantsSnapshot: [{
+        sku: String,
+        available: Boolean
+      }]
+    }]
+  },
+
   shipping: {
     freeShipping: {
       type: Boolean,

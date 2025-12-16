@@ -100,15 +100,56 @@ export async function checkOrderMinimumRequirements(order) {
 
 /**
  * עדכון pricing של הזמנה לאחר ביטול
+ *
+ * לוגיקה עסקית:
+ * - תופסים מסגרת אשראי של הסכום המלא (כולל משלוח)
+ * - לאחר טיפול בהזמנה, גובים רק עבור הפריטים שלא בוטלו
+ * - אם כל הפריטים בוטלו -> אין משלוח (adjustedShipping = 0, adjustedTotal = 0)
+ * - אם יש פריטים פעילים -> יש משלוח (adjustedShipping = pricing.shipping)
+ * - המחירים כוללים מע"מ - אנחנו מחלצים כמה מתוכם זה מע"מ
  */
 export function updateOrderPricing(order) {
-  const totalRefunds = calculateTotalRefunds(order.items);
-  const adjustedTotal = order.pricing.total - totalRefunds;
+  const activeItems = getActiveItems(order.items);
+  const allItemsCancelled = areAllItemsCancelled(order.items);
+
+  // אם כל הפריטים בוטלו - הכל 0
+  if (allItemsCancelled) {
+    return {
+      ...order.pricing,
+      adjustedSubtotal: 0,
+      adjustedShipping: 0,
+      adjustedTax: 0,
+      adjustedTotal: 0,
+      totalRefunds: order.pricing.total,
+      allItemsCancelled: true
+    };
+  }
+
+  // חישוב סכום פריטים פעילים (כולל מע"מ)
+  const activeItemsSubtotal = calculateActiveItemsTotal(order.items);
+
+  // משלוח (כולל מע"מ)
+  const adjustedShipping = order.pricing.shipping || 0;
+
+  // סה"כ חיוב (כולל מע"מ) = פריטים + משלוח
+  const adjustedTotal = activeItemsSubtotal + adjustedShipping;
+
+  // חישוב מע"מ: אם המחיר כולל מע"מ 18%, אז המע"מ = מחיר × (18/118)
+  // לדוגמה: 600₪ כולל מע"מ → מע"מ = 600 × 0.1525 = 91.53₪
+  const TAX_RATE = 0.18;
+  const adjustedTax = adjustedTotal * (TAX_RATE / (1 + TAX_RATE));
+
+  // סכום "לא יגבה" = כמה פחות הלקוח ישלם מהסכום המקורי
+  const totalRefunds = order.pricing.total - adjustedTotal;
 
   return {
     ...order.pricing,
-    totalRefunds,
-    adjustedTotal
+    adjustedSubtotal: activeItemsSubtotal,
+    adjustedShipping,
+    adjustedTax,
+    adjustedTotal,
+    totalRefunds: Math.max(0, totalRefunds),
+    allItemsCancelled: false
   };
 }
 

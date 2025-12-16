@@ -178,6 +178,8 @@ export const updateItemStatus = async (req, res) => {
  * POST /api/admin/orders/:orderId/items/:itemId/order-from-supplier
  */
 export const orderFromSupplier = async (req, res) => {
+  const ProductAvailabilityService = (await import('../services/ProductAvailabilityService.js')).default;
+
   // ✅ Start MongoDB transaction
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -260,6 +262,24 @@ export const orderFromSupplier = async (req, res) => {
       notes: `הוזמן מספק${supplierOrderNumber ? ` - מספר הזמנה: ${supplierOrderNumber}` : ''}`
     });
 
+    // ⭐ בדיקת שינוי מחיר דרך השירות המרכזי
+    if (actualCost && actualCost !== item.price) {
+      await ProductAvailabilityService.updateAvailability({
+        productId: item.product,
+        variantSku: item.variantSku,
+        available: true, // המוצר זמין, רק המחיר השתנה
+        reason: 'עדכון מחיר בפועל מהזמנה',
+        source: 'order_actual_price',
+        triggeredBy: req.user._id,
+        metadata: {
+          orderId,
+          actualCost,
+          expectedCost: item.price
+        },
+        session
+      });
+    }
+
     // ✅ Save with session
     await order.save({ session });
 
@@ -310,6 +330,8 @@ export const orderFromSupplier = async (req, res) => {
  * POST /api/admin/orders/:orderId/items/:itemId/cancel
  */
 export const cancelItem = async (req, res) => {
+  const ProductAvailabilityService = (await import('../services/ProductAvailabilityService.js')).default;
+
   // ✅ Start MongoDB transaction for data consistency
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -388,6 +410,29 @@ export const cancelItem = async (req, res) => {
       notes: `בוטל - ${reason.trim()}`
     });
 
+    // ⭐ אם הסיבה היא "לא זמין" - עדכן את המוצר דרך השירות המרכזי
+    const reasonLower = reason.toLowerCase();
+    if (reasonLower.includes('אזל') ||
+        reasonLower.includes('לא זמין') ||
+        reasonLower.includes('אין במלאי') ||
+        reasonLower.includes('out of stock')) {
+
+      await ProductAvailabilityService.updateAvailability({
+        productId: item.product,
+        variantSku: item.variantSku,
+        available: false,
+        reason: `ביטול פריט בהזמנה: ${reason.trim()}`,
+        source: 'order_cancellation',
+        triggeredBy: req.user._id,
+        metadata: {
+          orderId,
+          itemId,
+          orderNumber: order.orderNumber
+        },
+        session
+      });
+    }
+
     // צור refund record
     const refundRecord = createRefundRecord(item, reason.trim(), req.user._id);
     order.refunds.push(refundRecord);
@@ -396,29 +441,24 @@ export const cancelItem = async (req, res) => {
     const updatedPricing = updateOrderPricing(order);
     order.pricing = updatedPricing;
 
-    // בדוק מינימום
-    const minimumCheck = checkOrderMinimumRequirements(order);
-
-    // ✅ Save with session
+    // ✅ Save with session (triggers auto-status update)
     await order.save({ session });
 
     // ✅ Commit transaction
     await session.commitTransaction();
 
-    // בדוק אם צריך להציע עדכון סטטוס ראשי
-    const suggestion = suggestOrderStatusUpdate(order);
-    const suggestionMessage = suggestion ? getStatusSuggestionMessage(suggestion, {
-      pending: 'ממתין לאישור',
-      payment_hold: 'מסגרת אשראי תפוסה',
-      ordered: 'הוזמן מארה"ב',
-      arrived_us_warehouse: 'הגיע למחסן ארה"ב',
-      shipped_to_israel: 'נשלח לישראל',
-      customs_israel: 'במכס בישראל',
-      arrived_israel_warehouse: 'הגיע למחסן בישראל',
-      shipped_to_customer: 'נשלח ללקוח',
-      delivered: 'נמסר',
-      cancelled: 'בוטל'
-    }) : null;
+    // ✅ NEW: בדיקת מינימום אחרי ביטול עם התראות
+    const minimumEnforcement = await import('../utils/minimumOrderEnforcement.js');
+    const minimumResult = await minimumEnforcement.checkAfterCancellation(order);
+
+    // אם מתחת למינימום - הוסף warning
+    let minimumWarning = null;
+    if (minimumResult.belowMinimum) {
+      minimumWarning = minimumEnforcement.formatMinimumWarningMessage(minimumResult.warning);
+
+      // ✅ LOG: רישום התראה לקונסול (TODO: שלח למנהל)
+      console.warn('\n' + minimumWarning);
+    }
 
     res.json({
       success: true,
@@ -428,12 +468,13 @@ export const cancelItem = async (req, res) => {
         orderUpdate: {
           adjustedTotal: order.pricing.adjustedTotal,
           totalRefunds: order.pricing.totalRefunds,
-          meetsMinimum: minimumCheck.meetsMinimum,
-          activeItemsCount: minimumCheck.activeItemsCount,
-          minimumCheck
+          meetsMinimum: minimumResult.checkResult.meetsMinimum,
+          activeItemsCount: minimumResult.checkResult.activeItemsCount,
+          minimumCheck: minimumResult.checkResult
         },
         message: `הפריט בוטל. נדרש החזר של ${refundAmount} ש"ח`,
-        orderStatusSuggestion: suggestionMessage
+        // ✅ NEW: הוסף התראת מינימום אם קיימת
+        minimumWarning: minimumResult.warning || null
       }
     });
 

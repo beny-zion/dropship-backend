@@ -47,19 +47,23 @@ const orderItemSchema = new mongoose.Schema({
   },
   supplierName: String, // שם הספק (Amazon, Karl Lagerfeld, וכו')
 
-  // ✅ ניהול פריט ברמת פריט
+  // ✅ ניהול פריט ברמת פריט - SIMPLIFIED (7 statuses)
   itemStatus: {
     type: String,
     enum: [
-      'pending',                // ממתין לטיפול
-      'ordered_from_supplier',  // הוזמן מספק
-      'arrived_us_warehouse',   // הגיע למחסן ארה"ב
-      'shipped_to_israel',      // נשלח לישראל
-      'customs_israel',         // במכס בישראל
+      'pending',                // ממתין להזמנה
+      'ordered',                // הוזמן מספק
+      'in_transit',             // בדרך לישראל
       'arrived_israel',         // הגיע לישראל
-      'ready_for_delivery',     // מוכן למשלוח
+      'shipped_to_customer',    // נשלח ללקוח
       'delivered',              // נמסר
-      'cancelled'               // בוטל
+      'cancelled',              // בוטל
+      // ⚠️ Legacy statuses - for backward compatibility during migration
+      'ordered_from_supplier',  // LEGACY - maps to 'ordered'
+      'arrived_us_warehouse',   // LEGACY - maps to 'in_transit'
+      'shipped_to_israel',      // LEGACY - maps to 'in_transit'
+      'customs_israel',         // LEGACY - maps to 'in_transit'
+      'ready_for_delivery'      // LEGACY - maps to 'arrived_israel'
     ],
     default: 'pending'
   },
@@ -191,20 +195,22 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: true,
     default: 'pending',
-    validate: {
-      validator: async function(value) {
-        // Allow the default value 'pending' always
-        if (value === 'pending') return true;
-
-        // Check if status exists in OrderStatus collection
-        const statusExists = await OrderStatus.findOne({
-          key: value,
-          isActive: true
-        });
-        return !!statusExists;
-      },
-      message: props => `סטטוס '${props.value}' לא קיים במערכת`
-    }
+    enum: [
+      'pending',                    // ממתין לטיפול
+      'in_progress',                // בתהליך
+      'ready_to_ship',              // מוכן למשלוח
+      'shipped',                    // נשלח ללקוח
+      'delivered',                  // נמסר
+      'cancelled',                  // בוטל
+      // ⚠️ Legacy statuses - for backward compatibility
+      'payment_hold',               // LEGACY
+      'ordered',                    // LEGACY - maps to 'in_progress'
+      'arrived_us_warehouse',       // LEGACY - maps to 'in_progress'
+      'shipped_to_israel',          // LEGACY - maps to 'in_progress'
+      'customs_israel',             // LEGACY - maps to 'in_progress'
+      'arrived_israel_warehouse',   // LEGACY - maps to 'ready_to_ship'
+      'shipped_to_customer'         // LEGACY - maps to 'shipped'
+    ]
   },
 
   // ✅ NEW: Materialized Computed Status Fields
@@ -357,18 +363,24 @@ const orderSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// ✅ MUST RUN FIRST: Compute status fields before anything else
-orderSchema.pre('save', function(next) {
-  // חישוב והשמה ב-computed
+// ✨ NEW: Auto-update status with full automation
+orderSchema.pre('save', async function(next) {
+  // ✅ 1. Import auto-update utilities
+  const autoUpdate = await import('../utils/autoStatusUpdate.js');
+
+  // ✅ 2. Auto-update order status based on items
+  autoUpdate.applyAutoStatusUpdate(this);
+
+  // ✅ 3. Update computed fields
   const activeItems = this.items.filter(item => !item.cancellation?.cancelled);
   const deliveredItems = activeItems.filter(item => item.itemStatus === 'delivered');
 
   this.computed = {
     overallProgress: calculateOverallProgress(this),
-    completionPercentage: calculateCompletionPercentage(this),
+    completionPercentage: autoUpdate.calculateCompletionPercentage(this.items),
     hasActiveItems: activeItems.length > 0,
     allItemsDelivered: activeItems.length > 0 && deliveredItems.length === activeItems.length,
-    needsAttention: calculateNeedsAttention(this),
+    needsAttention: autoUpdate.calculateNeedsAttention(this),
     lastComputedAt: new Date()
   };
 

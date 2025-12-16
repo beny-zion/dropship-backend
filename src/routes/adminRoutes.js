@@ -18,6 +18,8 @@ import * as adminUsersController from '../controllers/adminUsersController.js';
 import * as adminOrderItemsController from '../controllers/adminOrderItemsController.js';
 // ✅ NEW: Import settings controller
 import * as adminSettingsController from '../controllers/adminSettingsController.js';
+// ✅ NEW: Import product availability controller
+import * as productAvailabilityController from '../controllers/productAvailabilityController.js';
 
 // Import validators
 import {
@@ -146,11 +148,84 @@ router.patch(
 );
 
 // @route   PATCH /api/admin/products/:id/availability
+// @deprecated Use /products/:productId/availability-v2 instead (централized service)
+// @warning This endpoint will be removed in future versions
 router.patch(
   '/products/:id/availability',
   validateMongoId,
-  logAdminAction('UPDATE_PRODUCT_AVAILABILITY', 'Product'),
+  logAdminAction('UPDATE_PRODUCT_AVAILABILITY_DEPRECATED', 'Product'),
+  (req, res, next) => {
+    console.warn('⚠️ DEPRECATED: /products/:id/availability is deprecated. Use /products/:productId/availability-v2 instead');
+    next();
+  },
   adminProductsController.updateProductAvailability
+);
+
+// ============================================
+// PRODUCT AVAILABILITY ROUTES (NEW - Centralized)
+// ============================================
+
+// @route   PATCH /api/admin/products/:productId/availability-v2
+// @desc    עדכון זמינות מרכזי (גרסה חדשה)
+router.patch(
+  '/products/:productId/availability-v2',
+  validateMongoId,
+  logAdminAction('UPDATE_AVAILABILITY_V2', 'Product'),
+  productAvailabilityController.updateAvailability
+);
+
+// @route   POST /api/admin/products/:productId/check-availability
+// @desc    בדיקת זמינות + מחיר (לשימוש ב-Inventory Check)
+router.post(
+  '/products/:productId/check-availability',
+  validateMongoId,
+  logAdminAction('CHECK_AVAILABILITY', 'Product'),
+  productAvailabilityController.checkAndUpdateAvailability
+);
+
+// @route   GET /api/admin/products/:productId/availability-history
+// @desc    היסטוריית שינויי זמינות
+router.get(
+  '/products/:productId/availability-history',
+  validateMongoId,
+  logAdminAction('VIEW_AVAILABILITY_HISTORY', 'Product'),
+  productAvailabilityController.getAvailabilityHistory
+);
+
+// @route   GET /api/admin/products/:productId/price-history
+// @desc    היסטוריית מחירים
+router.get(
+  '/products/:productId/price-history',
+  validateMongoId,
+  logAdminAction('VIEW_PRICE_HISTORY', 'Product'),
+  productAvailabilityController.getPriceHistory
+);
+
+// @route   POST /api/admin/products/:productId/inventory-check
+// @desc    שמירת בדיקת זמינות (עדכון "נבדק ב")
+router.post(
+  '/products/:productId/inventory-check',
+  validateMongoId,
+  logAdminAction('RECORD_INVENTORY_CHECK', 'Product'),
+  productAvailabilityController.recordInventoryCheck
+);
+
+// @route   GET /api/admin/products/:productId/inventory-check
+// @desc    שליפת מידע על בדיקת זמינות אחרונה
+router.get(
+  '/products/:productId/inventory-check',
+  validateMongoId,
+  logAdminAction('VIEW_INVENTORY_CHECK', 'Product'),
+  productAvailabilityController.getInventoryCheck
+);
+
+// @route   POST /api/admin/products/:productId/availability/batch
+// @desc    עדכון Batch של מוצר + ווריאנטים (ביצועים משופרים!)
+router.post(
+  '/products/:productId/availability/batch',
+  validateMongoId,
+  logAdminAction('BATCH_UPDATE_AVAILABILITY', 'Product'),
+  productAvailabilityController.batchUpdateAvailability
 );
 
 // @route   POST /api/admin/products/bulk-delete

@@ -50,6 +50,10 @@ const auditLogSchema = new mongoose.Schema({
       'CREATE_PRODUCT',
       'UPDATE_PRODUCT',
       'DELETE_PRODUCT',
+      'MARK_AVAILABLE',
+      'MARK_UNAVAILABLE',
+      'CHECK_AVAILABILITY',
+      'UPDATE_AVAILABILITY',
 
       // Settings actions
       'VIEW_SETTINGS',
