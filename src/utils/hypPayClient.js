@@ -6,12 +6,19 @@
  */
 
 import axios from 'axios';
-import FormData from 'form-data';
 
-const HYP_API_URL = process.env.HYP_API_URL || 'https://pay.hyp.co.il/p/';
-const HYP_MASOF = process.env.HYP_MASOF;
-const HYP_PASSP = process.env.HYP_PASSP;
-const HYP_TEST_MODE = process.env.HYP_TEST_MODE === 'true';
+/**
+ * קריאת משתני סביבה בזמן ריצה (לא בזמן import)
+ * זה מאפשר לטסטים לטעון את .env לפני השימוש
+ */
+function getConfig() {
+  return {
+    HYP_API_URL: process.env.HYP_API_URL || 'https://pay.hyp.co.il/p/',
+    HYP_MASOF: process.env.HYP_MASOF,
+    HYP_PASSP: process.env.HYP_PASSP,
+    HYP_TEST_MODE: process.env.HYP_TEST_MODE === 'true'
+  };
+}
 
 /**
  * שליחת בקשה ל-Hyp Pay
@@ -20,22 +27,24 @@ const HYP_TEST_MODE = process.env.HYP_TEST_MODE === 'true';
  * @returns {Promise<Object>} תשובה מפוענחת
  */
 async function sendRequest(params) {
+  const config = getConfig();
+
   // ולידציה
-  if (!HYP_MASOF || !HYP_PASSP) {
+  if (!config.HYP_MASOF || !config.HYP_PASSP) {
     throw new Error('Hyp Pay credentials not configured. Check HYP_MASOF and HYP_PASSP in .env');
   }
 
   // הוספת פרמטרים חובה
   const fullParams = {
-    Masof: HYP_MASOF,
-    PassP: HYP_PASSP,
+    Masof: config.HYP_MASOF,
+    PassP: config.HYP_PASSP,
     UTF8: 'True',
     UTF8out: 'True',
     ...params
   };
 
   // Log בפיתוח
-  if (HYP_TEST_MODE) {
+  if (config.HYP_TEST_MODE) {
     console.log('🔵 Hyp Pay Request:', {
       action: params.action,
       amount: params.Amount,
@@ -53,7 +62,7 @@ async function sendRequest(params) {
       }
     });
 
-    const response = await axios.post(HYP_API_URL, formData.toString(), {
+    const response = await axios.post(config.HYP_API_URL, formData.toString(), {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
@@ -63,7 +72,7 @@ async function sendRequest(params) {
     const result = parseHypResponse(response.data);
 
     // Log בפיתוח
-    if (HYP_TEST_MODE) {
+    if (config.HYP_TEST_MODE) {
       console.log('🟢 Hyp Pay Response:', {
         CCode: result.CCode,
         success: isSuccessCode(result.CCode, params.action),
@@ -118,7 +127,7 @@ function isSuccessCode(code, action) {
   // קודים ספציפיים לפעולות
   const actionSpecificCodes = {
     'soft': ['0', '800'],           // hold - 800 = עסקה מושהית
-    'commitTrans': ['0'],           // capture
+    'commitTrans': ['0', '250'],    // capture - 250 = גביה מוצלחת (עם אזהרה קלה)
     'CancelTrans': ['0'],           // cancel
     'QueryTrans': ['0'],            // query
     'cancelOrder': ['0']            // cancel order
@@ -161,7 +170,8 @@ function getErrorMessage(result) {
     '65': 'חריגה ממספר עסקאות מותר',
     '75': 'CVV שגוי - נסה שוב',
     '79': 'כרטיס לא בשימוש',
-    '96': 'תקלה במערכת'
+    '96': 'תקלה במערכת',
+    '250': 'גביה מוצלחת (עם אזהרה)' // Not actually an error - success with warning
   };
 
   return errorMessages[result.CCode] || `שגיאה לא ידועה (קוד: ${result.CCode})`;
@@ -213,7 +223,7 @@ export {
   isSuccessCode,
   getErrorMessage,
   validateCardDetails,
-  HYP_TEST_MODE
+  getConfig
 };
 
 export default {
@@ -222,5 +232,5 @@ export default {
   isSuccessCode,
   getErrorMessage,
   validateCardDetails,
-  HYP_TEST_MODE
+  getConfig
 };

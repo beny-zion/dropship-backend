@@ -20,6 +20,12 @@ import {
   bulkUpdateItems
 } from '../controllers/adminOrderItemsController.js';
 
+// ✅ Customer Cancellation Controller (Phase 4)
+import {
+  requestItemCancellation,
+  checkCancellationEligibility
+} from '../controllers/customerCancellationController.js';
+
 const router = express.Router();
 
 // All routes require authentication
@@ -41,5 +47,10 @@ router.post('/:orderId/items/:itemId/order-from-supplier', adminAuth, orderFromS
 router.post('/:orderId/items/:itemId/cancel', adminAuth, cancelItem);
 router.get('/:orderId/items/:itemId/history', adminAuth, getItemHistory);
 router.put('/:orderId/items/bulk-update', adminAuth, bulkUpdateItems);
+
+// ✅ Customer Cancellation Routes (Phase 4)
+// These routes allow customers to cancel their own items (only if pending)
+router.post('/:orderId/items/:itemId/request-cancel', requestItemCancellation);
+router.get('/:orderId/items/:itemId/can-cancel', checkCancellationEligibility);
 
 export default router;

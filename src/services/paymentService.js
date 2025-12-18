@@ -248,7 +248,10 @@ function calculateFinalAmount(order) {
     const isCancelled = item.status === 'cancelled' ||
                        item.itemStatus === 'cancelled' ||
                        item.cancellation?.cancelled === true;
-    return !isCancelled && item.status === 'ordered';
+    const isOrdered = item.status === 'ordered' ||
+                     item.itemStatus === 'ordered' ||
+                     item.itemStatus === 'ordered_from_supplier';
+    return !isCancelled && isOrdered;
   });
 
   // אם אין פריטים פעילים - החזר 0

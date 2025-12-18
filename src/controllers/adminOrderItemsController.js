@@ -753,7 +753,7 @@ export const bulkOrderFromSupplier = async (req, res) => {
           : `הוזמן מרוכז מ-${supplierName}`;
 
         // עדכן פריט
-        item.itemStatus = 'ordered_from_supplier';
+        item.itemStatus = 'ordered';  // ✅ Updated to use new status instead of legacy 'ordered_from_supplier'
         item.supplierOrder = {
           orderedAt: new Date(),
           orderedBy: req.user._id,
@@ -765,7 +765,7 @@ export const bulkOrderFromSupplier = async (req, res) => {
 
         // הוסף להיסטוריה
         item.statusHistory.push({
-          status: 'ordered_from_supplier',
+          status: 'ordered',  // ✅ Updated to use new status instead of legacy 'ordered_from_supplier'
           changedAt: new Date(),
           changedBy: req.user._id,
           notes: `הוזמן מרוכז מ-${supplierName}`

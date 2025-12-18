@@ -12,7 +12,7 @@ import {
   getPaymentStatus,
   triggerChargeJob
 } from '../controllers/paymentController.js';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { auth, adminAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -21,35 +21,35 @@ const router = express.Router();
  * @desc    תפיסת מסגרת אשראי
  * @access  Private
  */
-router.post('/hold', authenticate, holdPayment);
+router.post('/hold', auth, holdPayment);
 
 /**
  * @route   POST /api/payments/capture/:orderId
  * @desc    גביה ידנית (מנהל)
  * @access  Admin
  */
-router.post('/capture/:orderId', authenticate, requireAdmin, capturePaymentManual);
+router.post('/capture/:orderId', auth, adminAuth, capturePaymentManual);
 
 /**
  * @route   POST /api/payments/cancel/:orderId
  * @desc    ביטול עסקה (מנהל)
  * @access  Admin
  */
-router.post('/cancel/:orderId', authenticate, requireAdmin, cancelPayment);
+router.post('/cancel/:orderId', auth, adminAuth, cancelPayment);
 
 /**
  * @route   GET /api/payments/status/:orderId
  * @desc    שאילתת סטטוס תשלום
  * @access  Private (משתמש או מנהל)
  */
-router.get('/status/:orderId', authenticate, getPaymentStatus);
+router.get('/status/:orderId', auth, getPaymentStatus);
 
 /**
  * @route   POST /api/payments/charge-ready
  * @desc    הרצה ידנית של Job לגביה (מנהל)
  * @access  Admin
  */
-router.post('/charge-ready', authenticate, requireAdmin, triggerChargeJob);
+router.post('/charge-ready', auth, adminAuth, triggerChargeJob);
 
 /**
  * @route   POST /api/payments/notify
