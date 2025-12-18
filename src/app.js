@@ -26,6 +26,7 @@ import homePageRoutes from './routes/homePageRoutes.js';
 import orderStatusRoutes from './routes/orderStatusRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 
@@ -91,6 +92,7 @@ app.use('/api/homepage', homePageRoutes); // 🏠 Dynamic HomePage CMS
 app.use('/api/order-statuses', orderStatusRoutes); // 📋 Order Statuses Management
 app.use('/api/admin/media', mediaRoutes); // 🖼️ Media Management (Cloudinary Tracking)
 app.use('/api/settings', settingsRoutes); // ⚙️ Public Settings (shipping, etc.)
+app.use('/api/payments', paymentRoutes); // 💳 Payment Management (Hyp Pay Integration)
 
 // Health check
 app.get('/health', (req, res) => {
@@ -231,6 +233,37 @@ app.listen(PORT, () => {
   
   console.log('✅ Backend Week 5 Complete!\n');
   console.log('════════════════════════════════════════════════════\n');
+
+  // ✅ NEW: Start payment charging job (Phase 3)
+  startPaymentChargingJob();
 });
+
+// ✅ NEW: Payment Charging Job Scheduler
+function startPaymentChargingJob() {
+  // הרץ מיד בהפעלה (אחרי 30 שניות)
+  setTimeout(async () => {
+    console.log('[PaymentJob] 🔄 הרצה ראשונית של chargeReadyOrders...');
+    try {
+      const { chargeReadyOrders } = await import('./jobs/chargeReadyOrders.js');
+      await chargeReadyOrders();
+    } catch (error) {
+      console.error('[PaymentJob] ❌ שגיאה בהרצה ראשונית:', error.message);
+    }
+  }, 30000);
+
+  // הרץ כל 10 דקות
+  const TEN_MINUTES = 10 * 60 * 1000;
+  setInterval(async () => {
+    console.log('[PaymentJob] 🔄 הרצת chargeReadyOrders...');
+    try {
+      const { chargeReadyOrders } = await import('./jobs/chargeReadyOrders.js');
+      await chargeReadyOrders();
+    } catch (error) {
+      console.error('[PaymentJob] ❌ שגיאה בהרצת Job:', error.message);
+    }
+  }, TEN_MINUTES);
+
+  console.log('💳 Payment Charging Job scheduled (every 10 minutes)');
+}
 
 export default app;

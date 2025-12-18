@@ -282,6 +282,11 @@ const orderSchema = new mongoose.Schema({
     hypOrderNumber: String,
 
     // סכומים
+    holdAmount: {
+      type: Number,
+      min: 0,
+      default: 0
+    },
     heldAmount: {
       type: Number,
       default: 0
@@ -297,6 +302,7 @@ const orderSchema = new mongoose.Schema({
 
     // תאריכים
     paidAt: Date,
+    holdAt: Date,
     heldAt: Date,
     chargedAt: Date,
     cancelledAt: Date,
@@ -304,7 +310,23 @@ const orderSchema = new mongoose.Schema({
     // שגיאות
     lastError: String,
     lastErrorCode: String,
-    lastErrorAt: Date
+    lastErrorAt: Date,
+
+    // היסטוריית תשלומים
+    paymentHistory: [{
+      action: {
+        type: String,
+        enum: ['hold', 'charge', 'cancel', 'refund']
+      },
+      amount: Number,
+      transactionId: String,
+      success: Boolean,
+      error: String,
+      timestamp: {
+        type: Date,
+        default: Date.now
+      }
+    }]
   },
   
   shipping: {
@@ -441,6 +463,54 @@ orderSchema.pre('save', function(next) {
   next();
 });
 
+// ✅ NEW: Payment readiness detection hook
+// זיהוי אוטומטי של מוכנות לגביה
+orderSchema.pre('save', function(next) {
+  // דלג אם זו הזמנה חדשה או אם כבר נגבה/בוטל
+  if (this.isNew || ['charged', 'cancelled', 'failed'].includes(this.payment?.status)) {
+    return next();
+  }
+
+  // בדוק רק אם יש hold פעיל
+  if (this.payment?.status !== 'hold') {
+    return next();
+  }
+
+  // בדוק אם כל הפריטים הוכרעו (ordered או cancelled)
+  const allItemsDecided = this.items.every(item => {
+    const status = item.itemStatus;
+    const isCancelled = item.cancellation?.cancelled === true;
+
+    // פריט הוכרע אם: הוזמן מספק, או בוטל
+    return status === 'ordered' ||
+           status === 'ordered_from_supplier' ||
+           isCancelled;
+  });
+
+  // אם כל הפריטים הוכרעו - סמן כמוכן לגביה
+  if (allItemsDecided && this.payment.status === 'hold') {
+    console.log(`[Order ${this.orderNumber}] ✅ כל הפריטים הוכרעו - מוכן לגביה`);
+    this.payment.status = 'ready_to_charge';
+
+    // הוסף לטיימליין
+    this.timeline.push({
+      status: 'ready_to_charge',
+      message: 'כל הפריטים הוכרעו - מוכן לגביה',
+      timestamp: new Date()
+    });
+  }
+
+  next();
+});
+
+// ✅ NEW: Migration hook - העתק transactionId ישן ל-hypTransactionId
+orderSchema.pre('save', function(next) {
+  if (this.payment?.transactionId && !this.payment.hypTransactionId) {
+    this.payment.hypTransactionId = this.payment.transactionId;
+  }
+  next();
+});
+
 // Update user stats when order is created
 orderSchema.post('save', async function(doc) {
   if (doc.isNew && doc.payment.status === 'completed') {
@@ -484,6 +554,9 @@ orderSchema.index({ 'shipping.trackingNumber': 1 }, { sparse: true });
 orderSchema.index({ 'computed.overallProgress': 1, createdAt: -1 });
 orderSchema.index({ 'computed.needsAttention': 1 });
 orderSchema.index({ 'computed.hasActiveItems': 1 });
+
+// ✅ NEW: Index for payment charging
+orderSchema.index({ 'payment.status': 1, 'payment.holdAt': 1 });
 
 // ⚡ SCALE FIX: Compound indexes for complex queries
 // Query: "הזמנות שצריכות תשומת לב" (orders with alerts)
