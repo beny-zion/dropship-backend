@@ -253,16 +253,58 @@ const orderSchema = new mongoose.Schema({
   payment: {
     method: {
       type: String,
-      enum: ['credit_card', 'paypal', 'cash'],
+      enum: ['credit_card', 'paypal', 'cash', 'bank_transfer'],
       default: 'credit_card'
     },
+    // סטטוס תשלום מורחב
     status: {
       type: String,
-      enum: ['pending', 'completed', 'failed'],
+      enum: [
+        'pending',           // ממתין לתשלום
+        'hold',              // מסגרת נתפסה (Postpone)
+        'ready_to_charge',   // מוכן לגביה (כל פריט הוכרע)
+        'charged',           // נגבה בהצלחה
+        'cancelled',         // בוטל (לא נגבה כלום)
+        'partial_refund',    // החזר חלקי
+        'full_refund',       // החזר מלא
+        'failed'             // נכשל
+      ],
       default: 'pending'
     },
+    // מזהה עסקה ישן (לתאימות אחורה)
     transactionId: String,
-    paidAt: Date
+
+    // פרטי Hyp Pay
+    hypTransactionId: {
+      type: String,
+      index: true
+    },
+    hypOrderNumber: String,
+
+    // סכומים
+    heldAmount: {
+      type: Number,
+      default: 0
+    },
+    chargedAmount: {
+      type: Number,
+      default: 0
+    },
+    refundedAmount: {
+      type: Number,
+      default: 0
+    },
+
+    // תאריכים
+    paidAt: Date,
+    heldAt: Date,
+    chargedAt: Date,
+    cancelledAt: Date,
+
+    // שגיאות
+    lastError: String,
+    lastErrorCode: String,
+    lastErrorAt: Date
   },
   
   shipping: {
