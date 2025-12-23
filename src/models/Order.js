@@ -263,6 +263,7 @@ const orderSchema = new mongoose.Schema({
         'pending',           // ממתין לתשלום
         'hold',              // מסגרת נתפסה (Postpone)
         'ready_to_charge',   // מוכן לגביה (כל פריט הוכרע)
+        'retry_pending',     // ממתין לניסיון חוזר (Phase 6.5.2)
         'charged',           // נגבה בהצלחה
         'cancelled',         // בוטל (לא נגבה כלום)
         'partial_refund',    // החזר חלקי
@@ -311,6 +312,26 @@ const orderSchema = new mongoose.Schema({
     lastError: String,
     lastErrorCode: String,
     lastErrorAt: Date,
+
+    // ✅ Phase 6.5.2: Retry mechanism
+    retryCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5
+    },
+    maxRetries: {
+      type: Number,
+      default: 3
+    },
+    lastRetryAt: Date,
+    nextRetryAt: Date,
+    retryErrors: [{
+      attempt: Number,
+      timestamp: Date,
+      error: String,
+      hypStatusCode: Number
+    }],
 
     // היסטוריית תשלומים
     paymentHistory: [{
@@ -488,8 +509,10 @@ orderSchema.pre('save', function(next) {
   });
 
   // אם כל הפריטים הוכרעו - סמן כמוכן לגביה
+  // ⚠️ PHASE 6.5.1: Hook זה משמש כ-FALLBACK בלבד למניעת race conditions
+  // העדכון העיקרי מתבצע ב-paymentStatusUpdater.tryMarkPaymentAsReady()
   if (allItemsDecided && this.payment.status === 'hold') {
-    console.log(`[Order ${this.orderNumber}] ✅ כל הפריטים הוכרעו - מוכן לגביה`);
+    console.log(`[Order ${this.orderNumber}] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)`);
     this.payment.status = 'ready_to_charge';
 
     // הוסף לטיימליין

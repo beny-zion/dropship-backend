@@ -167,6 +167,10 @@ describe('Phase 3: Auto Charging Logic', () => {
 
   describe('chargeReadyOrders Job', () => {
     beforeEach(async () => {
+      // ✅ Phase 6.5.3: נקה locks לפני כל טסט
+      const Lock = (await import('../src/models/Lock.js')).default;
+      await Lock.deleteMany({});
+
       // נקה הזמנות בדיקה
       await Order.deleteMany({ orderNumber: /^TEST-JOB-/ });
     });

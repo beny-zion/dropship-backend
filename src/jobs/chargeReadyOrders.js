@@ -14,6 +14,7 @@
 
 import Order from '../models/Order.js';
 import { capturePayment } from '../services/paymentService.js';
+import { acquireLock, releaseLock } from '../utils/distributedLock.js';
 
 /**
  * מבצע גביה להזמנה בודדת
@@ -101,35 +102,55 @@ async function chargeOrder(order) {
 
     } else {
       // ❌ גביה נכשלה
-      console.error(`[ChargeJob] ❌ גביה נכשלה להזמנה ${order.orderNumber}: ${result.error}`);
 
-      order.payment.status = 'failed';
-      order.payment.lastError = result.error;
-      order.payment.lastErrorCode = result.code;
-      order.payment.lastErrorAt = new Date();
+      // ✅ Phase 6.5.2: בדוק אם זה retry או נכשל סופית
+      if (result.willRetry) {
+        console.log(`[ChargeJob] ⏳ הזמנה ${order.orderNumber} תנסה שוב ב-${result.retryAt.toLocaleString('he-IL')}`);
 
-      order.timeline.push({
-        status: 'payment_failed',
-        message: `גביה נכשלה: ${result.error}`,
-        timestamp: new Date()
-      });
+        // סטטוס כבר עודכן ל-retry_pending ב-paymentService
+        // רק צריך לעדכן timeline
+        order.timeline.push({
+          status: 'payment_retry_scheduled',
+          message: `ניסיון ${result.retryCount}/${result.maxRetries} נכשל. ינסה שוב בקרוב`,
+          timestamp: new Date()
+        });
 
-      // הוסף להיסטוריה
-      if (!order.payment.paymentHistory) {
-        order.payment.paymentHistory = [];
+        await order.save();
+
+        return { success: false, willRetry: true, retryAt: result.retryAt };
+
+      } else {
+        // נכשל סופית
+        console.error(`[ChargeJob] ❌ גביה נכשלה סופית להזמנה ${order.orderNumber}: ${result.error}`);
+
+        order.payment.status = 'failed';
+        order.payment.lastError = result.error;
+        order.payment.lastErrorCode = result.code;
+        order.payment.lastErrorAt = new Date();
+
+        order.timeline.push({
+          status: 'payment_failed',
+          message: `גביה נכשלה סופית: ${result.error}`,
+          timestamp: new Date()
+        });
+
+        // הוסף להיסטוריה
+        if (!order.payment.paymentHistory) {
+          order.payment.paymentHistory = [];
+        }
+        order.payment.paymentHistory.push({
+          action: 'charge',
+          amount: 0,
+          transactionId: order.payment.hypTransactionId,
+          success: false,
+          error: result.error,
+          timestamp: new Date()
+        });
+
+        await order.save();
+
+        return { success: false, error: result.error };
       }
-      order.payment.paymentHistory.push({
-        action: 'charge',
-        amount: 0,
-        transactionId: order.payment.hypTransactionId,
-        success: false,
-        error: result.error,
-        timestamp: new Date()
-      });
-
-      await order.save();
-
-      return { success: false, error: result.error };
     }
 
   } catch (error) {
@@ -152,9 +173,15 @@ export async function chargeReadyOrders() {
   console.log('[ChargeJob] 🔍 מחפש הזמנות מוכנות לגביה...');
 
   try {
-    // מצא הזמנות מוכנות לגביה
+    // ✅ Phase 6.5.2: מצא גם הזמנות עם retry_pending שהגיע זמנן
     const readyOrders = await Order.find({
-      'payment.status': 'ready_to_charge',
+      $or: [
+        { 'payment.status': 'ready_to_charge' },
+        {
+          'payment.status': 'retry_pending',
+          'payment.nextRetryAt': { $lte: new Date() }
+        }
+      ],
       'payment.hypTransactionId': { $exists: true, $ne: null }
     })
     .sort({ 'payment.holdAt': 1 }) // הישנות ביותר קודם
@@ -172,21 +199,46 @@ export async function chargeReadyOrders() {
       processed: readyOrders.length,
       success: 0,
       failed: 0,
-      cancelled: 0
+      cancelled: 0,
+      skipped: 0 // ✅ Phase 6.5.3: locked by another instance
     };
 
-    // גבה כל הזמנה
+    // ✅ Phase 6.5.3: גבה כל הזמנה עם distributed lock
     for (const order of readyOrders) {
-      const result = await chargeOrder(order);
+      const lockKey = `charge_order_${order._id}`;
 
-      if (result.success) {
-        if (result.cancelled) {
-          stats.cancelled++;
+      // נסה לרכוש lock (60 שניות TTL)
+      const acquired = await acquireLock(lockKey, 60);
+
+      if (!acquired) {
+        console.log(`[ChargeJob] ⏭️  Order ${order.orderNumber} locked by another instance, skipping`);
+        stats.skipped++;
+        continue;
+      }
+
+      // הצלחנו לרכוש lock - עכשיו נבצע גביה
+      try {
+        console.log(`[ChargeJob] 🔒 Acquired lock for order ${order.orderNumber}`);
+
+        const result = await chargeOrder(order);
+
+        if (result.success) {
+          if (result.cancelled) {
+            stats.cancelled++;
+          } else {
+            stats.success++;
+          }
         } else {
-          stats.success++;
+          stats.failed++;
         }
-      } else {
+
+      } catch (error) {
+        console.error(`[ChargeJob] ❌ Error processing order ${order.orderNumber}:`, error);
         stats.failed++;
+      } finally {
+        // שחרר lock תמיד - גם אם הי תה שגיאה
+        await releaseLock(lockKey);
+        console.log(`[ChargeJob] 🔓 Released lock for order ${order.orderNumber}`);
       }
 
       // המתן 2 שניות בין בקשות (למנוע עומס על Hyp Pay)
@@ -197,7 +249,8 @@ export async function chargeReadyOrders() {
       processed: stats.processed,
       success: stats.success,
       cancelled: stats.cancelled,
-      failed: stats.failed
+      failed: stats.failed,
+      skipped: stats.skipped
     });
 
     return stats;

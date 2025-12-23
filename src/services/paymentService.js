@@ -17,6 +17,58 @@
 import { sendRequest, isSuccessCode, getErrorMessage, validateCardDetails } from '../utils/hypPayClient.js';
 
 /**
+ * ✅ Phase 6.5.2: Retry Mechanism Helpers
+ */
+
+/**
+ * בודק אם שגיאה ניתנת לניסיון חוזר
+ * @param {Object} error - אובייקט שגיאה או תשובה מ-Hyp Pay
+ * @returns {boolean}
+ */
+function isRetryableError(error) {
+  // HTTP status codes שניתן לנסות שוב
+  const retryableStatuses = [408, 429, 500, 502, 503, 504];
+
+  // הודעות שגיאה שמעידות על בעיה זמנית
+  const retryableMessages = ['timeout', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'network'];
+
+  // בדיקת status code
+  if (error.statusCode && retryableStatuses.includes(error.statusCode)) {
+    return true;
+  }
+
+  // בדיקת Hyp Pay CCode
+  if (error.CCode || error.code) {
+    const code = error.CCode || error.code;
+    // כל קוד שגיאה מעל 500 הוא בעיה בשרת
+    if (typeof code === 'string' || typeof code === 'number') {
+      const numCode = parseInt(code);
+      if (!isNaN(numCode) && numCode >= 500) {
+        return true;
+      }
+    }
+  }
+
+  // בדיקת הודעה
+  const message = error.message || error.error || '';
+  if (retryableMessages.some(msg => message.toLowerCase().includes(msg))) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * חישוב זמן המתנה לניסיון הבא (exponential backoff)
+ * @param {number} retryCount - מספר הניסיון הנוכחי
+ * @returns {number} דקות המתנה
+ */
+function calculateBackoff(retryCount) {
+  // 5min, 10min, 20min, 40min, 80min
+  return Math.pow(2, retryCount) * 5;
+}
+
+/**
  * תפיסת מסגרת אשראי (Postpone)
  * נקרא בעת יצירת הזמנה - לא גובה, רק תופס מסגרת
  *
@@ -119,8 +171,13 @@ export async function capturePayment(order) {
   try {
     const result = await sendRequest(params);
 
-    // CCode=0 = גביה מוצלחת
+    // ✅ הצלחה!
     if (isSuccessCode(result.CCode, 'commitTrans')) {
+      // איפוס retry counters במקרה של הצלחה
+      order.payment.retryCount = 0;
+      order.payment.nextRetryAt = null;
+      order.payment.lastRetryAt = null;
+
       return {
         success: true,
         chargedAmount: finalAmount,
@@ -131,16 +188,92 @@ export async function capturePayment(order) {
       };
     }
 
+    // ❌ שגיאה - בדוק אם ניתן לנסות שוב
+    const error = { code: result.CCode, error: getErrorMessage(result), raw: result };
+
+    if (isRetryableError(error) && order.payment.retryCount < order.payment.maxRetries) {
+      // ✅ Phase 6.5.2: תזמן retry
+      const backoffMinutes = calculateBackoff(order.payment.retryCount);
+      const nextRetryAt = new Date(Date.now() + backoffMinutes * 60000);
+
+      order.payment.retryCount++;
+      order.payment.lastRetryAt = new Date();
+      order.payment.nextRetryAt = nextRetryAt;
+      order.payment.status = 'retry_pending';
+
+      // שמור שגיאה בהיסטוריה
+      if (!order.payment.retryErrors) {
+        order.payment.retryErrors = [];
+      }
+      order.payment.retryErrors.push({
+        attempt: order.payment.retryCount,
+        timestamp: new Date(),
+        error: error.error,
+        hypStatusCode: parseInt(result.CCode) || null
+      });
+
+      console.log(`[PaymentService] ⏳ Scheduling retry ${order.payment.retryCount}/${order.payment.maxRetries} in ${backoffMinutes} minutes`);
+
+      return {
+        success: false,
+        willRetry: true,
+        retryAt: nextRetryAt,
+        retryCount: order.payment.retryCount,
+        maxRetries: order.payment.maxRetries,
+        error: error.error,
+        code: result.CCode
+      };
+    }
+
+    // ❌ נכשל סופית (או הגענו ל-max retries)
+    console.error(`[PaymentService] ❌ Payment failed permanently after ${order.payment.retryCount} retries`);
+
     return {
       success: false,
-      error: getErrorMessage(result),
+      willRetry: false,
+      error: error.error,
       code: result.CCode,
       raw: result
     };
+
   } catch (error) {
     console.error('[PaymentService] capturePayment error:', error);
+
+    // בדוק אם זו שגיאת רשת שניתן לנסות שוב
+    if (isRetryableError(error) && order.payment.retryCount < order.payment.maxRetries) {
+      const backoffMinutes = calculateBackoff(order.payment.retryCount);
+      const nextRetryAt = new Date(Date.now() + backoffMinutes * 60000);
+
+      order.payment.retryCount++;
+      order.payment.lastRetryAt = new Date();
+      order.payment.nextRetryAt = nextRetryAt;
+      order.payment.status = 'retry_pending';
+
+      if (!order.payment.retryErrors) {
+        order.payment.retryErrors = [];
+      }
+      order.payment.retryErrors.push({
+        attempt: order.payment.retryCount,
+        timestamp: new Date(),
+        error: error.message,
+        hypStatusCode: null
+      });
+
+      console.log(`[PaymentService] ⏳ Network error - scheduling retry ${order.payment.retryCount}/${order.payment.maxRetries}`);
+
+      return {
+        success: false,
+        willRetry: true,
+        retryAt: nextRetryAt,
+        retryCount: order.payment.retryCount,
+        error: error.message,
+        code: 'NETWORK_ERROR'
+      };
+    }
+
     return {
       success: false,
+      willRetry: false,
       error: 'תקלה בגביית התשלום',
       code: 'NETWORK_ERROR'
     };

@@ -16,6 +16,7 @@ import {
 } from '../utils/orderCalculations.js';
 import { getAllowedNextStatuses, getStatusTransitionError } from '../utils/itemStatusValidation.js';
 import { suggestOrderStatusUpdate, getStatusSuggestionMessage } from '../utils/orderStatusSuggestion.js';
+import { tryMarkPaymentAsReady } from '../utils/paymentStatusUpdater.js';
 
 /**
  * עדכון סטטוס פריט
@@ -286,6 +287,14 @@ export const orderFromSupplier = async (req, res) => {
     // ✅ Commit transaction
     await session.commitTransaction();
 
+    // ✅ Phase 6.5.1: Atomic payment status update (prevent race condition)
+    try {
+      await tryMarkPaymentAsReady(orderId);
+    } catch (error) {
+      console.error(`[orderFromSupplier] Failed to update payment status:`, error.message);
+      // לא זורקים שגיאה - ה-fallback hook ידאג לזה
+    }
+
     // בדוק אם צריך להציע עדכון סטטוס ראשי
     const suggestion = suggestOrderStatusUpdate(order);
     const suggestionMessage = suggestion ? getStatusSuggestionMessage(suggestion, {
@@ -446,6 +455,15 @@ export const cancelItem = async (req, res) => {
 
     // ✅ Commit transaction
     await session.commitTransaction();
+
+    // ✅ Phase 6.5.1: Atomic payment status update (prevent race condition)
+    // ביטול פריט יכול להוביל להזמנה ready_to_charge אם זה הפריט האחרון שהיה pending
+    try {
+      await tryMarkPaymentAsReady(orderId);
+    } catch (error) {
+      console.error(`[cancelItem] Failed to update payment status:`, error.message);
+      // לא זורקים שגיאה - ה-fallback hook ידאג לזה
+    }
 
     // ✅ NEW: בדיקת מינימום אחרי ביטול עם התראות
     const minimumEnforcement = await import('../utils/minimumOrderEnforcement.js');
@@ -868,6 +886,23 @@ export const bulkOrderFromSupplier = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    // ✅ Phase 6.5.1: Atomic payment status update (prevent race condition)
+    // נסה לעדכן payment.status ל-ready_to_charge באופן אטומי
+    // זה מונע race condition כאשר 2 אדמינים מעדכנים פריטים שונים במקביל
+    if (results.length > 0) {
+      const uniqueOrderIds = [...new Set(results.map(r => r.orderId.toString()))];
+
+      for (const orderId of uniqueOrderIds) {
+        try {
+          await tryMarkPaymentAsReady(orderId);
+        } catch (error) {
+          console.error(`[bulkOrderFromSupplier] Failed to update payment status for order ${orderId}:`, error.message);
+          // לא זורקים שגיאה - רק לוג
+          // ה-pre-save hook ידאג לזה בפעם הבאה
+        }
+      }
+    }
 
     res.json({
       success: true,

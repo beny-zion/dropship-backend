@@ -58,7 +58,8 @@ router.post('/charge-ready', auth, adminAuth, triggerChargeJob);
  * @note    יש לממש בשלבים הבאים
  */
 router.post('/notify', (req, res) => {
-  console.log('[PaymentRoutes] Hyp Pay Webhook received:', req.body);
+  // ✅ Phase 6.5.4: לא לוגים של req.body המלא (יכול להכיל פרטי תשלום רגישים)
+  console.log('[PaymentRoutes] Hyp Pay Webhook received - Order:', req.body?.Order || 'N/A', 'CCode:', req.body?.CCode);
   // TODO: לממש בשלב 4
   res.status(200).send('OK');
 });
