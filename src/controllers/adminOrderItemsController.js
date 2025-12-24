@@ -17,6 +17,7 @@ import {
 import { getAllowedNextStatuses, getStatusTransitionError } from '../utils/itemStatusValidation.js';
 import { suggestOrderStatusUpdate, getStatusSuggestionMessage } from '../utils/orderStatusSuggestion.js';
 import { tryMarkPaymentAsReady } from '../utils/paymentStatusUpdater.js';
+import { applyAutoStatusUpdate } from '../utils/autoStatusUpdate.js';
 
 /**
  * עדכון סטטוס פריט
@@ -287,6 +288,10 @@ export const orderFromSupplier = async (req, res) => {
     // ✅ Commit transaction
     await session.commitTransaction();
 
+    // ✅ Apply auto-status update manually (hooks don't run in transactions)
+    applyAutoStatusUpdate(order);
+    await order.save(); // Save again to apply the status changes
+
     // ✅ Phase 6.5.1: Atomic payment status update (prevent race condition)
     try {
       await tryMarkPaymentAsReady(orderId);
@@ -455,6 +460,10 @@ export const cancelItem = async (req, res) => {
 
     // ✅ Commit transaction
     await session.commitTransaction();
+
+    // ✅ Apply auto-status update manually (hooks don't run in transactions)
+    applyAutoStatusUpdate(order);
+    await order.save(); // Save again to apply the status changes
 
     // ✅ Phase 6.5.1: Atomic payment status update (prevent race condition)
     // ביטול פריט יכול להוביל להזמנה ready_to_charge אם זה הפריט האחרון שהיה pending
@@ -886,6 +895,23 @@ export const bulkOrderFromSupplier = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    // ✅ Apply auto-status update manually for all affected orders (hooks don't run in transactions)
+    if (results.length > 0) {
+      const uniqueOrderIds = [...new Set(results.map(r => r.orderId.toString()))];
+
+      for (const orderId of uniqueOrderIds) {
+        try {
+          const order = await Order.findById(orderId);
+          if (order) {
+            applyAutoStatusUpdate(order);
+            await order.save();
+          }
+        } catch (error) {
+          console.error(`[bulkOrderFromSupplier] Failed to update status for order ${orderId}:`, error.message);
+        }
+      }
+    }
 
     // ✅ Phase 6.5.1: Atomic payment status update (prevent race condition)
     // נסה לעדכן payment.status ל-ready_to_charge באופן אטומי
