@@ -76,9 +76,7 @@ export function areAllItemsDecided(order) {
     const isCancelled = item.cancellation?.cancelled === true;
 
     // פריט הוכרע אם: הוזמן מספק, או בוטל
-    return status === 'ordered' ||
-           status === 'ordered_from_supplier' ||
-           isCancelled;
+    return status === 'ordered' || isCancelled;
   });
 }
 

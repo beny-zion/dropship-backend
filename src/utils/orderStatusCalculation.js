@@ -96,11 +96,11 @@ export function calculateOrderStatus(order) {
     overallStatus = 'at_us_warehouse';
   }
   // אם כל הפריטים הוזמנו מספק
-  else if (statusCounts[ITEM_STATUS.ORDERED_FROM_SUPPLIER] === activeItemsCount) {
+  else if (statusCounts[ITEM_STATUS.ORDERED] === activeItemsCount) {
     overallStatus = 'fully_ordered';
   }
   // אם יש לפחות פריט מוזמן
-  else if (statusCounts[ITEM_STATUS.ORDERED_FROM_SUPPLIER] > 0) {
+  else if (statusCounts[ITEM_STATUS.ORDERED] > 0) {
     overallStatus = 'partially_ordered';
   }
   // אם כל הפריטים ממתינים
@@ -115,7 +115,7 @@ export function calculateOrderStatus(order) {
   // חישוב אחוז השלמה (בהתבסס על שלבים)
   const statusWeights = {
     [ITEM_STATUS.PENDING]: 0,
-    [ITEM_STATUS.ORDERED_FROM_SUPPLIER]: 15,
+    [ITEM_STATUS.ORDERED]: 15,
     [ITEM_STATUS.ARRIVED_US_WAREHOUSE]: 30,
     [ITEM_STATUS.SHIPPED_TO_ISRAEL]: 50,
     [ITEM_STATUS.ARRIVED_ISRAEL]: 70,
@@ -197,7 +197,7 @@ export function detectStuckOrders(order, daysThreshold = 7) {
     }
 
     if (
-      item.itemStatus === ITEM_STATUS.ORDERED_FROM_SUPPLIER &&
+      item.itemStatus === ITEM_STATUS.ORDERED &&
       daysSinceLastChange >= 14
     ) {
       alerts.push({

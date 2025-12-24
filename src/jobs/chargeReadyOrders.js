@@ -21,7 +21,12 @@ import { acquireLock, releaseLock } from '../utils/distributedLock.js';
  */
 async function chargeOrder(order) {
   try {
-    console.log(`[ChargeJob] 🔄 מנסה לגבות הזמנה ${order.orderNumber}...`);
+    console.log('\n🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷');
+    console.log('🤖 [ChargeJob] Processing order:', order.orderNumber);
+    console.log('   Payment status:', order.payment.status);
+    console.log('   Transaction ID:', order.payment.hypTransactionId);
+    console.log('   Hold amount: ₪' + order.payment.holdAmount);
+    console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷\n');
 
     // ולידציה - חייב להיות transactionId
     if (!order.payment?.hypTransactionId) {
@@ -170,7 +175,11 @@ async function chargeOrder(order) {
  * פונקציה ראשית - סריקת וגביית הזמנות
  */
 export async function chargeReadyOrders() {
-  console.log('[ChargeJob] 🔍 מחפש הזמנות מוכנות לגביה...');
+  console.log('\n╔════════════════════════════════════════╗');
+  console.log('║  🤖 CHARGE JOB STARTED                ║');
+  console.log('╚════════════════════════════════════════╝');
+  console.log('⏰ Time:', new Date().toLocaleString('he-IL'));
+  console.log('[ChargeJob] 🔍 Searching for ready orders...\n');
 
   try {
     // ✅ Phase 6.5.2: מצא גם הזמנות עם retry_pending שהגיע זמנן
@@ -188,11 +197,16 @@ export async function chargeReadyOrders() {
     .limit(10); // גבול של 10 בכל הרצה
 
     if (readyOrders.length === 0) {
-      console.log('[ChargeJob] ℹ️  אין הזמנות מוכנות לגביה');
+      console.log('[ChargeJob] ℹ️  No orders ready for charging');
+      console.log('╚════════════════════════════════════════╝\n');
       return { processed: 0, success: 0, failed: 0 };
     }
 
-    console.log(`[ChargeJob] 📋 נמצאו ${readyOrders.length} הזמנות מוכנות לגביה`);
+    console.log(`[ChargeJob] 📋 Found ${readyOrders.length} orders ready for charging:`);
+    readyOrders.forEach((order, i) => {
+      console.log(`   ${i+1}. ${order.orderNumber} - ${order.payment.status} - ₪${order.payment.holdAmount}`);
+    });
+    console.log('');
 
     // סטטיסטיקות
     const stats = {
@@ -245,18 +259,23 @@ export async function chargeReadyOrders() {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    console.log('[ChargeJob] ✅ סיכום ריצה:', {
-      processed: stats.processed,
-      success: stats.success,
-      cancelled: stats.cancelled,
-      failed: stats.failed,
-      skipped: stats.skipped
-    });
+    console.log('\n╔════════════════════════════════════════╗');
+    console.log('║  📊 CHARGE JOB SUMMARY                ║');
+    console.log('╚════════════════════════════════════════╝');
+    console.log('✅ Success:', stats.success);
+    console.log('🚫 Cancelled:', stats.cancelled);
+    console.log('❌ Failed:', stats.failed);
+    console.log('⏭️  Skipped (locked):', stats.skipped);
+    console.log('📈 Total processed:', stats.processed);
+    console.log('╚════════════════════════════════════════╝\n');
 
     return stats;
 
   } catch (error) {
-    console.error('[ChargeJob] ❌ שגיאה בהרצת Job:', error);
+    console.error('\n❌❌❌ [ChargeJob] CRITICAL ERROR ❌❌❌');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    console.error('╚════════════════════════════════════════╝\n');
     throw error;
   }
 }

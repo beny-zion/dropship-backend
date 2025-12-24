@@ -225,7 +225,7 @@ export function computeOrderStatusFromItems(items) {
   const hasArrivedIsrael = activeItems.some(item => item.itemStatus === 'arrived_israel');
   const hasShippedToIsrael = activeItems.some(item => item.itemStatus === 'shipped_to_israel');
   const hasArrivedUS = activeItems.some(item => item.itemStatus === 'arrived_us_warehouse');
-  const hasOrdered = activeItems.some(item => item.itemStatus === 'ordered_from_supplier');
+  const hasOrdered = activeItems.some(item => item.itemStatus === 'ordered');
 
   if (hasDelivered) return 'shipped_to_customer'; // יש פריטים שנמסרו
   if (hasReadyForDelivery) return 'ready_for_delivery';

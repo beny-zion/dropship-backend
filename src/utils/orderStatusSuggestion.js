@@ -111,12 +111,12 @@ function getSuggestedStatus(stats, order) {
   }
 
   // אם כל הפריטים הוזמנו מספק
-  if (stats.statusCounts[ITEM_STATUS.ORDERED_FROM_SUPPLIER] === activeItems) {
+  if (stats.statusCounts[ITEM_STATUS.ORDERED] === activeItems) {
     return 'ordered';
   }
 
   // אם יותר ממחצית הפריטים הוזמנו
-  const orderedCount = stats.statusCounts[ITEM_STATUS.ORDERED_FROM_SUPPLIER] || 0;
+  const orderedCount = stats.statusCounts[ITEM_STATUS.ORDERED] || 0;
   if (orderedCount > 0 && orderedCount / activeItems >= 0.5) {
     return 'ordered';
   }
@@ -175,7 +175,7 @@ function getSuggestionReason(stats, suggestedStatus) {
     'customs_israel': `כל ${stats.activeItemsCount} הפריטים במכס בישראל`,
     'shipped_to_israel': `כל ${stats.activeItemsCount} הפריטים בדרך לישראל`,
     'arrived_us_warehouse': `כל ${stats.activeItemsCount} הפריטים הגיעו למחסן ארה"ב`,
-    'ordered': `${stats.statusCounts[ITEM_STATUS.ORDERED_FROM_SUPPLIER] || stats.activeItemsCount} פריטים הוזמנו מהספק`,
+    'ordered': `${stats.statusCounts[ITEM_STATUS.ORDERED] || stats.activeItemsCount} פריטים הוזמנו מהספק`,
     'pending': 'עדיין יש פריטים ממתינים'
   };
 

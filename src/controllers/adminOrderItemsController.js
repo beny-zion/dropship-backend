@@ -254,11 +254,11 @@ export const orderFromSupplier = async (req, res) => {
     };
 
     // עדכן סטטוס
-    item.itemStatus = ITEM_STATUS.ORDERED_FROM_SUPPLIER;
+    item.itemStatus = ITEM_STATUS.ORDERED;
 
     // הוסף להיסטוריה
     item.statusHistory.push({
-      status: ITEM_STATUS.ORDERED_FROM_SUPPLIER,
+      status: ITEM_STATUS.ORDERED,
       changedAt: new Date(),
       changedBy: req.user._id,
       notes: `הוזמן מספק${supplierOrderNumber ? ` - מספר הזמנה: ${supplierOrderNumber}` : ''}`
