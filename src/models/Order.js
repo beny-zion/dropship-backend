@@ -282,6 +282,16 @@ const orderSchema = new mongoose.Schema({
     },
     hypOrderNumber: String,
 
+    // ✅ Phase 6.5.3: J5 Protocol - Partial Capture Support
+    hypAuthCode: {
+      type: String,
+      index: true  // ACode מהתשובה של J5 hold
+    },
+    hypUid: {
+      type: String,
+      index: true  // UID מהתשובה של J5 hold
+    },
+
     // סכומים
     holdAmount: {
       type: Number,

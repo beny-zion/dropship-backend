@@ -1,7 +1,11 @@
 /**
  * Payment Controller
  *
- * מטפל בכל הפעולות הקשורות לתשלומים:
+ * ✅ IFRAME Flow (New):
+ * - יצירת קישור תשלום (create-payment-link)
+ * - Callback handlers (success/error)
+ *
+ * ❌ Old Flow (DEPRECATED):
  * - תפיסת מסגרת (hold)
  * - גביה (capture)
  * - ביטול (cancel)
@@ -9,8 +13,219 @@
  */
 
 import Order from '../models/Order.js';
-import { holdCredit, capturePayment, cancelTransaction, queryTransaction } from '../services/paymentService.js';
+import {
+  // ✅ IFRAME Flow
+  generatePaymentUrl,
+  processCallback,
+  // Shared
+  capturePayment,
+  cancelTransaction,
+  queryTransaction,
+  // ❌ DEPRECATED
+  holdCredit
+} from '../services/paymentService.js';
 import { chargeReadyOrdersManual } from '../jobs/chargeReadyOrders.js';
+
+// ============================================================
+// ✅ IFRAME Payment Flow (New & Recommended)
+// ============================================================
+
+/**
+ * POST /api/payments/create-payment-link
+ * יצירת URL לדף תשלום של HyPay
+ */
+export const createPaymentLink = async (req, res) => {
+  try {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'חסר מזהה הזמנה'
+      });
+    }
+
+    // מצא הזמנה
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
+    }
+
+    // וודא שההזמנה שייכת למשתמש (אם לא admin)
+    if (req.user && !req.user.isAdmin && order.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'אין הרשאה להזמנה זו'
+      });
+    }
+
+    // וודא שעדיין לא שולם
+    if (order.payment?.status && order.payment.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `ההזמנה כבר בתהליך תשלום (סטטוס: ${order.payment.status})`
+      });
+    }
+
+    // יצור URL לתשלום
+    const result = generatePaymentUrl(order);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: result.error
+      });
+    }
+
+    // עדכן הזמנה - מחכה לתשלום
+    order.payment = order.payment || {};
+    order.payment.status = 'pending';
+    order.payment.method = 'credit_card';
+    order.payment.paymentLinkCreatedAt = new Date();
+    await order.save();
+
+    console.log(`[PaymentController] Payment link created for order ${order.orderNumber}`);
+
+    return res.json({
+      success: true,
+      paymentUrl: result.paymentUrl,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber
+    });
+
+  } catch (error) {
+    console.error('[PaymentController] createPaymentLink error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'שגיאה ביצירת קישור תשלום',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * GET /api/payments/callback/success
+ * Callback מ-HyPay אחרי תשלום מוצלח
+ */
+export const callbackSuccess = async (req, res) => {
+  try {
+    console.log('[PaymentController] Success callback received:', req.query);
+
+    // עבד את התשובה מ-HyPay
+    const callbackResult = processCallback(req.query);
+
+    if (!callbackResult.success) {
+      console.error('[PaymentController] Callback processing failed:', callbackResult.error);
+      // הפנה לדף שגיאה
+      return res.redirect(`/orders?error=${encodeURIComponent(callbackResult.error)}`);
+    }
+
+    // מצא הזמנה לפי orderNumber או orderId
+    let order = await Order.findOne({ orderNumber: callbackResult.orderNumber });
+
+    if (!order && callbackResult.orderId) {
+      order = await Order.findById(callbackResult.orderId);
+    }
+
+    if (!order) {
+      console.error('[PaymentController] Order not found for callback');
+      return res.redirect('/orders?error=' + encodeURIComponent('הזמנה לא נמצאה'));
+    }
+
+    // עדכן הזמנה
+    order.payment = order.payment || {};
+    order.payment.status = callbackResult.isHold ? 'hold' : 'charged';
+    order.payment.hypTransactionId = callbackResult.transactionId;
+    order.payment.hypAuthCode = callbackResult.authCode;
+    order.payment.hypUid = callbackResult.uid;
+    order.payment.holdAmount = callbackResult.amount;
+    order.payment.holdAt = new Date();
+    order.payment.method = 'credit_card';
+
+    // היסטוריה
+    if (!order.payment.paymentHistory) {
+      order.payment.paymentHistory = [];
+    }
+    order.payment.paymentHistory.push({
+      action: callbackResult.isHold ? 'hold' : 'charge',
+      amount: callbackResult.amount,
+      transactionId: callbackResult.transactionId,
+      success: true,
+      timestamp: new Date()
+    });
+
+    // טיימליין
+    order.timeline.push({
+      status: 'payment_hold',
+      message: `מסגרת אשראי נתפסה: ₪${callbackResult.amount}`,
+      timestamp: new Date()
+    });
+
+    // עדכן סטטוס הזמנה
+    if (order.status === 'pending') {
+      order.status = 'in_progress';
+    }
+
+    await order.save();
+
+    console.log(`[PaymentController] Order ${order.orderNumber} payment updated successfully`);
+
+    // הפנה לדף הזמנה
+    return res.redirect(`/orders/${order._id}?payment=success`);
+
+  } catch (error) {
+    console.error('[PaymentController] callbackSuccess error:', error);
+    return res.redirect(`/orders?error=${encodeURIComponent('שגיאה בעיבוד התשלום')}`);
+  }
+};
+
+/**
+ * GET /api/payments/callback/error
+ * Callback מ-HyPay אחרי שגיאה
+ */
+export const callbackError = async (req, res) => {
+  try {
+    console.log('[PaymentController] Error callback received:', req.query);
+
+    const callbackResult = processCallback(req.query);
+    const errorMessage = callbackResult.error || 'התשלום נכשל';
+
+    // נסה לעדכן הזמנה
+    if (req.query.Order) {
+      const order = await Order.findOne({ orderNumber: req.query.Order });
+      if (order) {
+        order.payment = order.payment || {};
+        order.payment.status = 'failed';
+        order.payment.lastError = errorMessage;
+        order.payment.lastErrorCode = req.query.CCode;
+        order.payment.lastErrorAt = new Date();
+
+        order.timeline.push({
+          status: 'payment_failed',
+          message: `תשלום נכשל: ${errorMessage}`,
+          timestamp: new Date()
+        });
+
+        await order.save();
+      }
+    }
+
+    // הפנה לדף שגיאה
+    return res.redirect(`/cart?error=${encodeURIComponent(errorMessage)}`);
+
+  } catch (error) {
+    console.error('[PaymentController] callbackError error:', error);
+    return res.redirect(`/cart?error=${encodeURIComponent('שגיאה בתשלום')}`);
+  }
+};
+
+// ============================================================
+// ❌ Old Payment Flow (DEPRECATED)
+// ============================================================
 
 /**
  * POST /api/payments/hold
@@ -54,6 +269,14 @@ export const holdPayment = async (req, res) => {
       order.payment.hypTransactionId = result.transactionId;
       order.payment.holdAmount = result.amount;
       order.payment.holdAt = new Date();
+
+      // ✅ Phase 6.5.3: שמור נתוני J5 Protocol ל-Partial Capture
+      if (result.authCode) {
+        order.payment.hypAuthCode = result.authCode;
+      }
+      if (result.uid) {
+        order.payment.hypUid = result.uid;
+      }
 
       // הוסף להיסטוריה
       if (!order.payment.paymentHistory) {
@@ -374,9 +597,17 @@ export const triggerChargeJob = async (req, res) => {
 };
 
 export default {
-  holdPayment,
+  // ✅ IFRAME Flow (New)
+  createPaymentLink,
+  callbackSuccess,
+  callbackError,
+
+  // Shared
   capturePaymentManual,
   cancelPayment,
   getPaymentStatus,
-  triggerChargeJob
+  triggerChargeJob,
+
+  // ❌ DEPRECATED
+  holdPayment
 };

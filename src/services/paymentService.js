@@ -1,20 +1,189 @@
 /**
  * Payment Service - אינטגרציה עם Hyp Pay
  *
- * תזרים תשלום:
- * 1. holdCredit() - תפיסת מסגרת (Postpone) - בעת יצירת הזמנה
- * 2. capturePayment() - גביה בפועל (Commit) - כשכל הפריטים הוכרעו
- * 3. cancelTransaction() - ביטול מסגרת - אם הכל בוטל
+ * ✅ תזרים תשלום IFRAME (מומלץ - ללא PCI Compliance):
+ * 1. generatePaymentUrl() - יצירת URL לדף תשלום של HyPay
+ * 2. processCallback() - עיבוד callback מ-HyPay אחרי תשלום
+ * 3. capturePayment() - גביה בפועל (Commit + Partial Capture)
+ * 4. cancelTransaction() - ביטול מסגרת
+ *
+ * ❌ תזרים תשלום ישן (DEPRECATED - דורש PCI Compliance):
+ * 1. holdCredit() - תפיסת מסגרת עם פרטי כרטיס
  *
  * מצבי תשלום:
  * - pending: ממתין לתשלום
- * - hold: מסגרת נתפסה (postpone)
+ * - hold: מסגרת נתפסה (J5 Hold)
  * - ready_to_charge: מוכן לגביה (כל פריט הוכרע)
  * - charged: נגבה בהצלחה
  * - cancelled: בוטל
  */
 
 import { sendRequest, isSuccessCode, getErrorMessage, validateCardDetails } from '../utils/hypPayClient.js';
+
+// ============================================================
+// ✅ IFRAME Payment Flow (New & Recommended)
+// ============================================================
+
+/**
+ * Configuration for IFRAME payments
+ */
+const IFRAME_CONFIG = {
+  SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'http://localhost:3000',
+};
+
+// Callback URLs
+const CALLBACK_URLS = {
+  SUCCESS: `${IFRAME_CONFIG.SITE_URL}/api/payments/callback/success`,
+  ERROR: `${IFRAME_CONFIG.SITE_URL}/api/payments/callback/error`,
+  NOTIFY: `${IFRAME_CONFIG.SITE_URL}/api/payments/callback/notify`,
+};
+
+/**
+ * ✅ NEW: יצירת URL לדף תשלום של HyPay (IFRAME)
+ *
+ * @param {Object} order - הזמנה (populated)
+ * @returns {Object} { success, paymentUrl, orderId, orderNumber, error }
+ */
+export function generatePaymentUrl(order) {
+  try {
+    const config = getConfig();
+
+    // בניית פרמטרים
+    const params = {
+      // פעולה
+      action: 'pay',
+
+      // פרטי מסוף
+      Masof: config.HYP_MASOF,
+      PassP: config.HYP_PASSP,
+
+      // סכום (באגורות)
+      Amount: String(Math.round(order.pricing.total * 100)),
+
+      // מזהה הזמנה
+      Order: order.orderNumber,
+      Info: `הזמנה ${order.orderNumber}`,
+
+      // מטבע (1 = שקלים)
+      Coin: '1',
+
+      // J5 - תפיסת מסגרת בלבד (לא גובה!)
+      J5: 'True',
+
+      // פרטי לקוח (אופציונלי - ממלא מראש)
+      ClientName: order.shippingAddress?.fullName?.split(' ')[0] || '',
+      ClientLName: order.shippingAddress?.fullName?.split(' ').slice(1).join(' ') || '',
+      email: order.shippingAddress?.email || order.user?.email || '',
+      phone: order.shippingAddress?.phone || '',
+
+      // Callbacks
+      SuccessURL: CALLBACK_URLS.SUCCESS,
+      ErrorURL: CALLBACK_URLS.ERROR,
+      // NotifyURL: CALLBACK_URLS.NOTIFY,  // אופציונלי
+
+      // הגדרות תצוגה
+      UTF8: 'True',
+      UTF8out: 'True',
+      MoreData: 'True',  // מחזיר UID ו-ACode (חובה ל-J5)
+
+      // מזהה להתאמה ב-callback
+      UserId: order._id.toString(),  // נשתמש בזה למצוא את ההזמנה
+
+      // מזהה פנימי
+      Tash: '1',
+    };
+
+    // בנה URL
+    const queryString = new URLSearchParams(params).toString();
+    const paymentUrl = `${config.HYP_API_URL}?${queryString}`;
+
+    console.log('[PaymentService] Generated payment URL for order:', order.orderNumber);
+
+    return {
+      success: true,
+      paymentUrl,
+      orderId: order._id.toString(),
+      orderNumber: order.orderNumber
+    };
+
+  } catch (error) {
+    console.error('[PaymentService] generatePaymentUrl error:', error);
+    return {
+      success: false,
+      error: 'שגיאה ביצירת קישור תשלום'
+    };
+  }
+}
+
+/**
+ * ✅ NEW: עיבוד Callback מ-HyPay (אחרי תשלום)
+ *
+ * @param {Object} callbackData - נתונים שהתקבלו מ-HyPay (query params)
+ * @returns {Object} { success, transactionId, authCode, uid, amount, orderNumber, orderId, error }
+ */
+export function processCallback(callbackData) {
+  try {
+    console.log('[PaymentService] Processing callback:', callbackData);
+
+    const ccode = String(callbackData.CCode || callbackData.ccode || '');
+
+    // בדוק הצלחה
+    if (!isSuccessCode(ccode, 'soft')) {
+      return {
+        success: false,
+        error: getErrorMessage(callbackData),
+        code: ccode
+      };
+    }
+
+    // חלץ נתונים
+    const result = {
+      success: true,
+      transactionId: callbackData.Id || callbackData.TransId,
+      authCode: callbackData.ACode || callbackData.AuthNum,
+      uid: callbackData.UID || callbackData.UserId,
+      amount: parseFloat(callbackData.Amount) / 100, // המר מאגורות לשקלים
+      orderNumber: callbackData.Order,
+      orderId: callbackData.UserId, // שמנו שם את ה-orderId
+      ccode,
+      isHold: ccode === '700' || ccode === '800',
+      message: ccode === '700' ? 'מסגרת אשראי נתפסה (J5)' : 'עסקה הצליחה',
+      raw: callbackData
+    };
+
+    console.log('[PaymentService] Callback processed successfully:', {
+      transactionId: result.transactionId,
+      authCode: result.authCode,
+      amount: result.amount,
+      isHold: result.isHold
+    });
+
+    return result;
+
+  } catch (error) {
+    console.error('[PaymentService] processCallback error:', error);
+    return {
+      success: false,
+      error: 'שגיאה בעיבוד תשובה מ-HyPay'
+    };
+  }
+}
+
+/**
+ * Helper function to get config (used by generatePaymentUrl)
+ */
+function getConfig() {
+  return {
+    HYP_API_URL: process.env.HYP_API_URL || 'https://pay.hyp.co.il/p/',
+    HYP_MASOF: process.env.HYP_MASOF,
+    HYP_PASSP: process.env.HYP_PASSP,
+    HYP_TEST_MODE: process.env.HYP_TEST_MODE === 'true'
+  };
+}
+
+// ============================================================
+// ❌ Old Payment Flow (DEPRECATED)
+// ============================================================
 
 /**
  * ✅ Phase 6.5.2: Retry Mechanism Helpers
@@ -90,7 +259,9 @@ export async function holdCredit(order, paymentDetails) {
   const params = {
     action: 'soft',
     Amount: Math.round(order.pricing.total * 100) / 100, // 2 ספרות אחרי הנקודה
-    Postpone: 'True',  // ← המפתח! לא גובה, רק תופס מסגרת
+    J5: 'True',        // ✅ Phase 6.5.3: J5 Protocol - תומך ב-Partial Capture
+    Postpone: 'True',  // ✅ Phase 6.5.5: מחזיר CCode=800 (עסקה מושהית) במקום 700
+    MoreData: 'True',  // ✅ חובה עבור J5 - מחזיר UID ו-ACode
     Order: order.orderNumber,
     Info: `הזמנה ${order.orderNumber} - ${order.items.length} פריטים`,
     UserId: paymentDetails.userId || order.user?._id?.toString(),
@@ -107,14 +278,16 @@ export async function holdCredit(order, paymentDetails) {
   try {
     const result = await sendRequest(params);
 
-    // CCode=800 = עסקה מושהית בהצלחה
-    // CCode=0 = גם תקין (במקרים מסוימים)
+    // CCode=0 = עסקה J5 בהצלחה
+    // תשובת J5 כוללת: Id, ACode, UID (כשמוסיפים MoreData=True)
     if (isSuccessCode(result.CCode, 'soft')) {
       return {
         success: true,
         transactionId: result.Id,
+        authCode: result.ACode,     // ✅ נחוץ ל-Partial Capture
+        uid: result.UserId,         // ✅ נחוץ ל-Partial Capture
         amount: order.pricing.total,
-        message: 'מסגרת אשראי נתפסה בהצלחה',
+        message: 'מסגרת אשראי נתפסה בהצלחה (J5 Protocol)',
         status: 'hold',
         raw: result
       };
@@ -162,11 +335,36 @@ export async function capturePayment(order) {
     return await cancelTransaction(order.payment.hypTransactionId);
   }
 
-  const params = {
-    action: 'commitTrans',
-    TransId: order.payment.hypTransactionId,
-    Amount: Math.round(finalAmount * 100) / 100
-  };
+  // ✅ Phase 6.5.3: בדיקה אם צריך Partial Capture (J5 Protocol)
+  const holdAmount = order.payment.holdAmount || 0;
+  const needsPartialCapture = finalAmount < holdAmount && order.payment.hypAuthCode && order.payment.hypUid;
+
+  let params;
+
+  if (needsPartialCapture) {
+    // J5 Partial Capture - גביה של סכום קטן יותר מה-Hold המקורי
+    console.log(`[PaymentService] 💰 Partial Capture: ₪${finalAmount} (Hold was ₪${holdAmount})`);
+
+    params = {
+      action: 'soft',
+      Amount: Math.round(finalAmount * 100) / 100,
+      // J5 Partial Capture parameters:
+      'inputObj.originalUid': order.payment.hypUid,
+      'inputObj.originalAmount': Math.round(finalAmount * 100) / 100,
+      'AuthNum': order.payment.hypAuthCode,
+      'inputObj.authorizationCodeManpik': '7',  // קבוע של SHVA
+      Order: order.orderNumber,
+      Info: `גביה חלקית - הזמנה ${order.orderNumber}`
+    };
+  } else {
+    // Regular Capture (commitTrans) - אין ביטולים או אין נתוני J5
+    console.log(`[PaymentService] 💰 Full Capture: ₪${finalAmount}`);
+
+    params = {
+      action: 'commitTrans',
+      TransId: order.payment.hypTransactionId
+    };
+  }
 
   try {
     const result = await sendRequest(params);
@@ -432,9 +630,16 @@ export function isReadyToCharge(order) {
 }
 
 export default {
-  holdCredit,
+  // ✅ IFRAME Flow (New)
+  generatePaymentUrl,
+  processCallback,
+
+  // Shared functions
   capturePayment,
   cancelTransaction,
   queryTransaction,
-  isReadyToCharge
+  isReadyToCharge,
+
+  // ❌ DEPRECATED
+  holdCredit
 };

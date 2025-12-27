@@ -16,7 +16,8 @@ function getConfig() {
     HYP_API_URL: process.env.HYP_API_URL || 'https://pay.hyp.co.il/p/',
     HYP_MASOF: process.env.HYP_MASOF,
     HYP_PASSP: process.env.HYP_PASSP,
-    HYP_TEST_MODE: process.env.HYP_TEST_MODE === 'true'
+    HYP_TEST_MODE: process.env.HYP_TEST_MODE === 'true',
+    HYP_MOCK_MODE: process.env.HYP_MOCK_MODE === 'true'
   };
 }
 
@@ -28,6 +29,41 @@ function getConfig() {
  */
 async function sendRequest(params) {
   const config = getConfig();
+
+  // ✅ Mock Mode - דלג על Hyp Pay API
+  if (config.HYP_MOCK_MODE) {
+    console.log('🟡 MOCK MODE: Simulating Hyp Pay response');
+    console.log('   Action:', params.action);
+    console.log('   Amount:', params.Amount);
+    console.log('   J5 Params:', {
+      originalUid: params['inputObj.originalUid'],
+      originalAmount: params['inputObj.originalAmount'],
+      authNum: params.AuthNum,
+      authCodeManpik: params['inputObj.authorizationCodeManpik']
+    });
+
+    // יצירת transaction ID מזוייף
+    const mockTransactionId = `MOCK-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+    // סימולציה של תשובת Hyp Pay
+    const mockResponse = {
+      // ✅ Phase 6.5.3: J5 Partial Capture (action=soft + originalUid) returns CCode=0
+      CCode: params.action === 'soft' && !params['inputObj.originalUid'] ? '800' : '0',
+      Id: mockTransactionId,
+      Amount: params.Amount,
+      Order: params.Order,
+      // ✅ Phase 6.5.3: J5 Protocol - Mock ACode and UID for testing
+      ACode: params.J5 === 'True' || params['inputObj.originalUid'] ? '0012345' : undefined,
+      UserId: params.J5 === 'True' ? mockTransactionId.replace('MOCK-', 'UID-') : undefined
+    };
+
+    console.log('🟢 MOCK Response:', mockResponse);
+
+    // המתן 500ms לסימולציה
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    return mockResponse;
+  }
 
   // ולידציה
   if (!config.HYP_MASOF || !config.HYP_PASSP) {
@@ -45,12 +81,14 @@ async function sendRequest(params) {
 
   // Log בפיתוח
   if (config.HYP_TEST_MODE) {
-    console.log('🔵 Hyp Pay Request:', {
-      action: params.action,
-      amount: params.Amount,
-      order: params.Order,
-      postpone: params.Postpone
-    });
+    // הסתר סיסמה בלוג
+    const logParams = { ...fullParams };
+    delete logParams.PassP;
+    if (logParams.CC) {
+      logParams.CC = `****${logParams.CC.slice(-4)}`;
+    }
+
+    console.log('🔵 Hyp Pay Request (Full Params):', logParams);
   }
 
   try {
@@ -66,7 +104,7 @@ async function sendRequest(params) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      timeout: 30000 // 30 seconds
+      timeout: 60000 // 60 seconds (הוגדל עבור חיבורים איטיים)
     });
 
     const result = parseHypResponse(response.data);
@@ -126,7 +164,7 @@ function isSuccessCode(code, action) {
 
   // קודים ספציפיים לפעולות
   const actionSpecificCodes = {
-    'soft': ['0', '800'],           // hold - 800 = עסקה מושהית
+    'soft': ['0', '700', '800'],    // hold - 700 = אישור ללא חיוב, 800 = עסקה מושהית
     'commitTrans': ['0', '250'],    // capture - 250 = גביה מוצלחת (עם אזהרה קלה)
     'CancelTrans': ['0'],           // cancel
     'QueryTrans': ['0'],            // query
@@ -171,7 +209,9 @@ function getErrorMessage(result) {
     '75': 'CVV שגוי - נסה שוב',
     '79': 'כרטיס לא בשימוש',
     '96': 'תקלה במערכת',
-    '250': 'גביה מוצלחת (עם אזהרה)' // Not actually an error - success with warning
+    '250': 'גביה מוצלחת (עם אזהרה)', // Not actually an error - success with warning
+    '700': 'אישור ללא חיוב',          // Not actually an error - hold approved
+    '800': 'עסקה מושהית'               // Not actually an error - hold successful
   };
 
   return errorMessages[result.CCode] || `שגיאה לא ידועה (קוד: ${result.CCode})`;

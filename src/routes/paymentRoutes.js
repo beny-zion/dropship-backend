@@ -1,20 +1,57 @@
 /**
  * Payment Routes
  *
- * מסלולים לניהול תשלומים
+ * מסלולים לניהול תשלומים:
+ * ✅ IFRAME Flow (New)
+ * ❌ Old Flow (DEPRECATED)
  */
 
 import express from 'express';
 import {
-  holdPayment,
+  // ✅ IFRAME Flow
+  createPaymentLink,
+  callbackSuccess,
+  callbackError,
+  // Shared
   capturePaymentManual,
   cancelPayment,
   getPaymentStatus,
-  triggerChargeJob
+  triggerChargeJob,
+  // ❌ DEPRECATED
+  holdPayment
 } from '../controllers/paymentController.js';
 import { auth, adminAuth } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// ============================================================
+// ✅ IFRAME Payment Flow (New & Recommended)
+// ============================================================
+
+/**
+ * @route   POST /api/payments/create-payment-link
+ * @desc    יצירת קישור תשלום (IFRAME)
+ * @access  Private (משתמש מחובר)
+ */
+router.post('/create-payment-link', auth, createPaymentLink);
+
+/**
+ * @route   GET /api/payments/callback/success
+ * @desc    Callback מ-HyPay - תשלום הצליח
+ * @access  Public (HyPay מפנה לזה)
+ */
+router.get('/callback/success', callbackSuccess);
+
+/**
+ * @route   GET /api/payments/callback/error
+ * @desc    Callback מ-HyPay - תשלום נכשל
+ * @access  Public (HyPay מפנה לזה)
+ */
+router.get('/callback/error', callbackError);
+
+// ============================================================
+// ❌ Old Payment Flow (DEPRECATED)
+// ============================================================
 
 /**
  * @route   POST /api/payments/hold
