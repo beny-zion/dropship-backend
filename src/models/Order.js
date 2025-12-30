@@ -248,6 +248,12 @@ const orderSchema = new mongoose.Schema({
     ]
   },
 
+  // Phase 9.3: Manual override for order status - prevents automation from changing
+  manualStatusOverride: {
+    type: Boolean,
+    default: false
+  },
+
   // ✅ NEW: TTL - זמן תפוגה להזמנה זמנית
   expiresAt: {
     type: Date,

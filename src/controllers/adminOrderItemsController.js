@@ -1203,13 +1203,15 @@ export const manualStatusUpdate = async (req, res) => {
 
       return res.json({
         success: true,
-        message: 'נעילת הסטטוס הידנית שוחררה - האוטומציה תמשיך לפעול',
-        item: {
-          id: item._id,
-          name: item.name,
-          status: item.itemStatus,
-          manualOverride: false
-        }
+        data: {
+          item: {
+            id: item._id,
+            name: item.name,
+            status: item.itemStatus,
+            manualOverride: false
+          }
+        },
+        message: 'נעילת הסטטוס הידנית שוחררה - האוטומציה תמשיך לפעול'
       });
     }
 
@@ -1241,14 +1243,16 @@ export const manualStatusUpdate = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'סטטוס הפריט עודכן ידנית - האוטומציה לא תדרוס שינוי זה',
-      item: {
-        id: item._id,
-        name: item.name,
-        previousStatus: oldStatus,
-        newStatus: status,
-        manualOverride: true
+      data: {
+        item: {
+          id: item._id,
+          name: item.name,
+          previousStatus: oldStatus,
+          newStatus: status,
+          manualOverride: true
+        }
       },
+      message: 'סטטוס הפריט עודכן ידנית - האוטומציה לא תדרוס שינוי זה',
       warning: 'שים לב: עדכונים אוטומטיים לא ישפיעו על פריט זה עד לשחרור הנעילה'
     });
 

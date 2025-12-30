@@ -311,6 +311,16 @@ router.put(
   adminOrdersController.updateOrderStatus
 );
 
+// @route   PUT /api/admin/orders/:id/manual-status
+// Phase 9.3: Manual status override for order
+router.put(
+  '/orders/:id/manual-status',
+  validateMongoId,
+  requireAdminOrManager,
+  auditLog('MANUAL_STATUS_OVERRIDE_ORDER', 'Order'),
+  adminOrdersController.manualStatusOverride
+);
+
 // @route   PUT /api/admin/orders/:id/tracking
 router.put(
   '/orders/:id/tracking',
