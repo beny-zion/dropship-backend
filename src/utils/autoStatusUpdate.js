@@ -140,8 +140,10 @@ export function shouldUpdateOrderStatus(order) {
     return null;
   }
 
-  // Phase 9.3: Check if any item has manual override - don't auto-update those items
-  // (This is at order level - item level override is checked separately)
+  // Phase 9.3: Check if ORDER has manual override - don't auto-update if locked
+  if (order.manualStatusOverride === true) {
+    return null;
+  }
 
   return {
     shouldUpdate: true,
