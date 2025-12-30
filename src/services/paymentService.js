@@ -29,7 +29,8 @@ import { sendRequest, isSuccessCode, getErrorMessage, validateCardDetails } from
  */
 const IFRAME_CONFIG = {
   SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'http://localhost:3000',
-  BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:5000',
+  // ✅ Auto-detect backend URL in production (Render.com sets RENDER_EXTERNAL_URL)
+  BACKEND_URL: process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5000',
 };
 
 // Callback URLs - Backend endpoints (HyPay sends callbacks here)
