@@ -74,8 +74,8 @@ app.use(morgan('dev'));
 const csrfProtection = csrf({
   cookie: {
     httpOnly: true,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production' // HTTPS only in production
+    sameSite: 'none', // ✅ Allow cross-origin requests (Frontend on different domain)
+    secure: true // ✅ Required when sameSite='none' (HTTPS only)
   }
 });
 
