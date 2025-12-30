@@ -236,7 +236,8 @@ export const createOrder = async (req, res) => {
     // Generate order number
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Create order
+    // ✅ Create Pre-Auth Order with TTL (30 minutes)
+    const THIRTY_MINUTES = 30 * 60 * 1000;
     const order = await Order.create({
       user: req.user.id,
       orderNumber,
@@ -252,18 +253,20 @@ export const createOrder = async (req, res) => {
         estimatedDays: estimatedDays,
         method: 'flat_rate'
       },
-      status: 'pending'
+      status: 'awaiting_payment',  // ✅ סטטוס זמני
+      expiresAt: new Date(Date.now() + THIRTY_MINUTES)  // ✅ פג תוקף אחרי 30 דקות
     });
 
-    console.log('Order after create:', {
+    console.log(`📦 Pre-auth order created: ${order.orderNumber}`, {
       _id: order._id,
+      status: order.status,
+      expiresAt: order.expiresAt?.toLocaleString('he-IL'),
       createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
       timeline: order.timeline
     });
 
-    // Clear user's cart
-    await Cart.findOneAndDelete({ user: req.user.id });
+    // ❌ DON'T clear cart here - only after successful payment!
+    // await Cart.findOneAndDelete({ user: req.user.id });
 
     // Populate order before sending
     const populatedOrder = await Order.findById(order._id)

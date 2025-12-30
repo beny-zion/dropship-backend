@@ -29,13 +29,14 @@ import { sendRequest, isSuccessCode, getErrorMessage, validateCardDetails } from
  */
 const IFRAME_CONFIG = {
   SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'http://localhost:3000',
+  BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:5000',
 };
 
-// Callback URLs
+// Callback URLs - Backend endpoints (HyPay sends callbacks here)
 const CALLBACK_URLS = {
-  SUCCESS: `${IFRAME_CONFIG.SITE_URL}/api/payments/callback/success`,
-  ERROR: `${IFRAME_CONFIG.SITE_URL}/api/payments/callback/error`,
-  NOTIFY: `${IFRAME_CONFIG.SITE_URL}/api/payments/callback/notify`,
+  SUCCESS: `${IFRAME_CONFIG.BACKEND_URL}/api/payments/callback/success`,
+  ERROR: `${IFRAME_CONFIG.BACKEND_URL}/api/payments/callback/error`,
+  NOTIFY: `${IFRAME_CONFIG.BACKEND_URL}/api/payments/callback/notify`,
 };
 
 /**
@@ -57,8 +58,8 @@ export function generatePaymentUrl(order) {
       Masof: config.HYP_MASOF,
       PassP: config.HYP_PASSP,
 
-      // סכום (באגורות)
-      Amount: String(Math.round(order.pricing.total * 100)),
+      // סכום - HyPay מצפה לשקלים (לא אגורות!)
+      Amount: String(Math.round(order.pricing.total)),
 
       // מזהה הזמנה
       Order: order.orderNumber,
@@ -67,14 +68,17 @@ export function generatePaymentUrl(order) {
       // מטבע (1 = שקלים)
       Coin: '1',
 
-      // J5 - תפיסת מסגרת בלבד (לא גובה!)
+      // J5 - שיריון מסגרת (מחזיר CCode=700)
       J5: 'True',
 
       // פרטי לקוח (אופציונלי - ממלא מראש)
       ClientName: order.shippingAddress?.fullName?.split(' ')[0] || '',
       ClientLName: order.shippingAddress?.fullName?.split(' ').slice(1).join(' ') || '',
       email: order.shippingAddress?.email || order.user?.email || '',
-      phone: order.shippingAddress?.phone || '',
+      cell: order.shippingAddress?.phone || '',  // טלפון נייד
+      street: order.shippingAddress?.street || '',  // כתובת רחוב
+      city: order.shippingAddress?.city || '',
+      zip: order.shippingAddress?.zipCode || '',
 
       // Callbacks
       SuccessURL: CALLBACK_URLS.SUCCESS,
@@ -86,8 +90,7 @@ export function generatePaymentUrl(order) {
       UTF8out: 'True',
       MoreData: 'True',  // מחזיר UID ו-ACode (חובה ל-J5)
 
-      // מזהה להתאמה ב-callback
-      UserId: order._id.toString(),  // נשתמש בזה למצוא את ההזמנה
+      // אל תשלח UserId - נשאיר ריק
 
       // מזהה פנימי
       Tash: '1',
@@ -98,6 +101,12 @@ export function generatePaymentUrl(order) {
     const paymentUrl = `${config.HYP_API_URL}?${queryString}`;
 
     console.log('[PaymentService] Generated payment URL for order:', order.orderNumber);
+    console.log('[PaymentService] Amount sent to HyPay:', params.Amount, 'shekels');
+    console.log('[PaymentService] Cell (phone):', params.cell);
+    console.log('[PaymentService] Street:', params.street);
+    console.log('[PaymentService] City:', params.city);
+    console.log('[PaymentService] Zip:', params.zip);
+    console.log('[PaymentService] Full payment URL:', paymentUrl);
 
     return {
       success: true,
@@ -123,7 +132,8 @@ export function generatePaymentUrl(order) {
  */
 export function processCallback(callbackData) {
   try {
-    console.log('[PaymentService] Processing callback:', callbackData);
+    // ✅ Phase 6.5.4: רק מזהים, לא נתונים רגישים
+    console.log('[PaymentService] Processing callback - Order:', callbackData.Order, 'CCode:', callbackData.CCode);
 
     const ccode = String(callbackData.CCode || callbackData.ccode || '');
 
@@ -141,12 +151,12 @@ export function processCallback(callbackData) {
       success: true,
       transactionId: callbackData.Id || callbackData.TransId,
       authCode: callbackData.ACode || callbackData.AuthNum,
-      uid: callbackData.UID || callbackData.UserId,
-      amount: parseFloat(callbackData.Amount) / 100, // המר מאגורות לשקלים
-      orderNumber: callbackData.Order,
-      orderId: callbackData.UserId, // שמנו שם את ה-orderId
+      uid: callbackData.UID,  // UID שחוזר מ-HyPay
+      userId: callbackData.UserId,  // ת.ז. שהמשתמש מילא
+      amount: parseFloat(callbackData.Amount), // HyPay מחזיר בשקלים (לא אגורות!)
+      orderNumber: callbackData.Order,  // נשתמש בזה למצוא את ההזמנה
       ccode,
-      isHold: ccode === '700' || ccode === '800',
+      isHold: ccode === '700',
       message: ccode === '700' ? 'מסגרת אשראי נתפסה (J5)' : 'עסקה הצליחה',
       raw: callbackData
     };
@@ -154,8 +164,11 @@ export function processCallback(callbackData) {
     console.log('[PaymentService] Callback processed successfully:', {
       transactionId: result.transactionId,
       authCode: result.authCode,
+      uid: result.uid,
       amount: result.amount,
-      isHold: result.isHold
+      ccode,
+      isHold: result.isHold,
+      message: result.message
     });
 
     return result;
@@ -259,9 +272,8 @@ export async function holdCredit(order, paymentDetails) {
   const params = {
     action: 'soft',
     Amount: Math.round(order.pricing.total * 100) / 100, // 2 ספרות אחרי הנקודה
-    J5: 'True',        // ✅ Phase 6.5.3: J5 Protocol - תומך ב-Partial Capture
-    Postpone: 'True',  // ✅ Phase 6.5.5: מחזיר CCode=800 (עסקה מושהית) במקום 700
-    MoreData: 'True',  // ✅ חובה עבור J5 - מחזיר UID ו-ACode
+    J5: 'True',        // ✅ שיריון מסגרת - מחזיר CCode=700
+    MoreData: 'True',  // ✅ מחזיר UID, ACode (חובה ל-J5)
     Order: order.orderNumber,
     Info: `הזמנה ${order.orderNumber} - ${order.items.length} פריטים`,
     UserId: paymentDetails.userId || order.user?._id?.toString(),
@@ -278,16 +290,26 @@ export async function holdCredit(order, paymentDetails) {
   try {
     const result = await sendRequest(params);
 
-    // CCode=0 = עסקה J5 בהצלחה
+    console.log('💳 [HoldCredit] HyPay Response:', {
+      CCode: result.CCode,
+      Id: result.Id,
+      ACode: result.ACode,
+      UID: result.UID,
+      Amount: result.Amount
+    });
+
+    // CCode=700 = שיריון מסגרת (J5)
     // תשובת J5 כוללת: Id, ACode, UID (כשמוסיפים MoreData=True)
     if (isSuccessCode(result.CCode, 'soft')) {
+      console.log('✅ [HoldCredit] Success! CCode:', result.CCode, '(Expected: 700 for J5)');
+
       return {
         success: true,
         transactionId: result.Id,
-        authCode: result.ACode,     // ✅ נחוץ ל-Partial Capture
-        uid: result.UserId,         // ✅ נחוץ ל-Partial Capture
+        authCode: result.ACode,
+        uid: result.UID,  // שים לב: UID ולא UserId!
         amount: order.pricing.total,
-        message: 'מסגרת אשראי נתפסה בהצלחה (J5 Protocol)',
+        message: `מסגרת אשראי נתפסה בהצלחה (J5 - CCode ${result.CCode})`,
         status: 'hold',
         raw: result
       };
@@ -304,6 +326,57 @@ export async function holdCredit(order, paymentDetails) {
     return {
       success: false,
       error: 'תקלה בתקשורת עם שער התשלום',
+      code: 'NETWORK_ERROR'
+    };
+  }
+}
+
+/**
+ * יצירת טוקן מעסקה קיימת (getToken)
+ * נחוץ כדי לבצע Partial Capture על עסקת J5
+ *
+ * @param {String} transactionId - מזהה העסקה המקורית (Id מה-J5)
+ * @returns {Promise<Object>} { success, token, tokef, error }
+ */
+export async function createTokenFromTransaction(transactionId) {
+  console.log(`🎫 [CreateToken] Creating token from transaction: ${transactionId}`);
+
+  const params = {
+    action: 'getToken',
+    TransId: transactionId
+  };
+
+  try {
+    const result = await sendRequest(params);
+
+    console.log('🎫 [CreateToken] HyPay Response:', {
+      CCode: result.CCode,
+      Token: result.Token ? `****${result.Token.slice(-4)}` : undefined,
+      Tokef: result.Tokef
+    });
+
+    if (isSuccessCode(result.CCode, 'getToken')) {
+      console.log('✅ [CreateToken] Token created successfully!');
+
+      return {
+        success: true,
+        token: result.Token,      // טוקן 19 ספרות
+        tokef: result.Tokef,      // תוקף בפורמט YYMM
+        raw: result
+      };
+    }
+
+    return {
+      success: false,
+      error: getErrorMessage(result),
+      code: result.CCode
+    };
+
+  } catch (error) {
+    console.error('[CreateToken] error:', error);
+    return {
+      success: false,
+      error: 'תקלה ביצירת טוקן',
       code: 'NETWORK_ERROR'
     };
   }
@@ -335,30 +408,73 @@ export async function capturePayment(order) {
     return await cancelTransaction(order.payment.hypTransactionId);
   }
 
-  // ✅ Phase 6.5.3: בדיקה אם צריך Partial Capture (J5 Protocol)
-  const holdAmount = order.payment.holdAmount || 0;
-  const needsPartialCapture = finalAmount < holdAmount && order.payment.hypAuthCode && order.payment.hypUid;
+  // ✅ Phase 6.5.3: J5 Token-Based Partial Capture
+  // אם יש טוקן - תמיד השתמש בו (לפי test-j5.js)
+  const hasToken = order.payment.hypToken && order.payment.hypTokenExpiry;
+  const hasJ5Data = order.payment.hypAuthCode && order.payment.hypUid;
 
   let params;
 
-  if (needsPartialCapture) {
-    // J5 Partial Capture - גביה של סכום קטן יותר מה-Hold המקורי
-    console.log(`[PaymentService] 💰 Partial Capture: ₪${finalAmount} (Hold was ₪${holdAmount})`);
+  if (hasToken && hasJ5Data) {
+    // 🎫 J5 Token-Based Partial Capture - השיטה המומלצת!
+    console.log(`[PaymentService] 💰 J5 Token Capture: ₪${finalAmount}`);
+    console.log(`   Token: ****${order.payment.hypToken.slice(-4)}`);
+    console.log(`   Original UID: ${order.payment.hypUid}`);
+    console.log(`   Original Amount: ₪${order.payment.holdAmount || finalAmount}`);
+
+    // פירוק התוקף (Tokef) בפורמט YYMM
+    const tokef = order.payment.hypTokenExpiry; // YYMM format
+    const tYear = tokef.substring(0, 2);  // YY
+    const tMonth = tokef.substring(2, 4); // MM
+
+    // סכום באגורות לפרמטר originalAmount (x100)
+    const originalAmountAgorot = Math.round((order.payment.holdAmount || finalAmount) * 100);
+
+    params = {
+      action: 'soft',
+      Amount: Math.round(finalAmount * 100) / 100,  // סכום בשקלים
+
+      // 🎫 נתוני הטוקן
+      CC: order.payment.hypToken,
+      Tmonth: tMonth,
+      Tyear: tYear,
+      Token: 'True',
+
+      // 🔗 פרמטרי J5 Partial Capture (קישור לעסקה המקורית)
+      'inputObj.originalUid': order.payment.hypUid,
+      'inputObj.originalAmount': originalAmountAgorot.toString(),  // באגורות!
+      'AuthNum': order.payment.hypAuthCode,
+      'inputObj.authorizationCodeManpik': '7',  // קבוע של SHVA
+
+      // נתונים נוספים
+      Coin: '1',
+      Order: order.orderNumber,
+      Info: `הזמנה ${order.orderNumber} - גביה סופית`,
+      ClientName: order.customer?.firstName || 'Customer',
+      ClientLName: order.customer?.lastName || 'Name',
+      UserId: order.customer?.phone || '000000000'
+    };
+  } else if (hasJ5Data) {
+    // ⚠️ Fallback: J5 Partial Capture ללא טוקן (לא אמור לקרות)
+    console.log(`[PaymentService] ⚠️ J5 Partial Capture without token (fallback)`);
+    console.log(`   Missing token - this should not happen!`);
+
+    const originalAmountAgorot = Math.round((order.payment.holdAmount || finalAmount) * 100);
 
     params = {
       action: 'soft',
       Amount: Math.round(finalAmount * 100) / 100,
-      // J5 Partial Capture parameters:
       'inputObj.originalUid': order.payment.hypUid,
-      'inputObj.originalAmount': Math.round(finalAmount * 100) / 100,
+      'inputObj.originalAmount': originalAmountAgorot.toString(),
       'AuthNum': order.payment.hypAuthCode,
-      'inputObj.authorizationCodeManpik': '7',  // קבוע של SHVA
+      'inputObj.authorizationCodeManpik': '7',
       Order: order.orderNumber,
       Info: `גביה חלקית - הזמנה ${order.orderNumber}`
     };
   } else {
-    // Regular Capture (commitTrans) - אין ביטולים או אין נתוני J5
-    console.log(`[PaymentService] 💰 Full Capture: ₪${finalAmount}`);
+    // ⚠️ Fallback: commitTrans רגיל (למקרים ישנים/תקלות)
+    console.log(`[PaymentService] ⚠️ Full Capture with commitTrans (legacy fallback)`);
+    console.log(`   Missing J5 data - using regular commitTrans`);
 
     params = {
       action: 'commitTrans',
@@ -369,8 +485,32 @@ export async function capturePayment(order) {
   try {
     const result = await sendRequest(params);
 
+    // קביעת שיטת הגביה לצורך לוגים
+    const captureMethod = hasToken && hasJ5Data
+      ? 'J5 Token Capture'
+      : hasJ5Data
+        ? 'J5 Partial Capture (no token)'
+        : 'commitTrans (legacy)';
+
+    console.log('💰 [CapturePayment] HyPay Response:', {
+      action: params.action,
+      CCode: result.CCode,
+      Id: result.Id,
+      method: captureMethod,
+      usedToken: hasToken,
+      finalAmount
+    });
+
     // ✅ הצלחה!
-    if (isSuccessCode(result.CCode, 'commitTrans')) {
+    const action = params.action === 'soft' ? 'soft' : 'commitTrans';
+    if (isSuccessCode(result.CCode, action)) {
+      console.log('✅ [CapturePayment] Charge successful!', {
+        CCode: result.CCode,
+        method: captureMethod,
+        amount: finalAmount,
+        expectedCCode: action === 'soft' ? '0 or 700' : '0 or 250'
+      });
+
       // איפוס retry counters במקרה של הצלחה
       order.payment.retryCount = 0;
       order.payment.nextRetryAt = null;

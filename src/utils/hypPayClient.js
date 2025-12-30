@@ -47,14 +47,25 @@ async function sendRequest(params) {
 
     // סימולציה של תשובת Hyp Pay
     const mockResponse = {
-      // ✅ Phase 6.5.3: J5 Partial Capture (action=soft + originalUid) returns CCode=0
-      CCode: params.action === 'soft' && !params['inputObj.originalUid'] ? '800' : '0',
+      // ✅ CCode תלוי ב-action:
+      // - getToken: '0' (הצלחה)
+      // - soft + J5 (hold): '700' (J5 success - Phase 6.5.4)
+      // - soft + originalUid (capture): '0' (הצלחה)
+      // - commitTrans: '0' או '250' (הצלחה)
+      CCode: params.action === 'getToken' ? '0' :
+             params.action === 'soft' && params['inputObj.originalUid'] ? '0' :
+             params.action === 'soft' && params.J5 === 'True' ? '700' :
+             params.action === 'soft' ? '800' : '0',
       Id: mockTransactionId,
       Amount: params.Amount,
       Order: params.Order,
-      // ✅ Phase 6.5.3: J5 Protocol - Mock ACode and UID for testing
+      // ✅ Phase 6.5.3: J5 Protocol - Mock ACode and UID for Hold
       ACode: params.J5 === 'True' || params['inputObj.originalUid'] ? '0012345' : undefined,
-      UserId: params.J5 === 'True' ? mockTransactionId.replace('MOCK-', 'UID-') : undefined
+      UID: params.J5 === 'True' ? mockTransactionId.replace('MOCK-', 'UID-') : undefined,
+      // ✅ Phase 6.5.1: Mock Token creation (getToken)
+      Token: params.action === 'getToken' && params.TransId ?
+        `${params.TransId.replace('MOCK-', 'TOK-')}123456789`.substring(0, 19) : undefined,
+      Tokef: params.action === 'getToken' ? '2612' : undefined  // דצמבר 2026 (YYMM)
     };
 
     console.log('🟢 MOCK Response:', mockResponse);
@@ -164,11 +175,12 @@ function isSuccessCode(code, action) {
 
   // קודים ספציפיים לפעולות
   const actionSpecificCodes = {
-    'soft': ['0', '700', '800'],    // hold - 700 = אישור ללא חיוב, 800 = עסקה מושהית
+    'soft': ['0', '700'],           // hold - 700 = אישור ללא חיוב (J5)
     'commitTrans': ['0', '250'],    // capture - 250 = גביה מוצלחת (עם אזהרה קלה)
     'CancelTrans': ['0'],           // cancel
     'QueryTrans': ['0'],            // query
-    'cancelOrder': ['0']            // cancel order
+    'cancelOrder': ['0'],           // cancel order
+    'getToken': ['0']               // get token - 0 = טוקן נוצר בהצלחה
   };
 
   const validCodes = actionSpecificCodes[action] || generalSuccessCodes;

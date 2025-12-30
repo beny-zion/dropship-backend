@@ -113,7 +113,8 @@ export const createPaymentLink = async (req, res) => {
  */
 export const callbackSuccess = async (req, res) => {
   try {
-    console.log('[PaymentController] Success callback received:', req.query);
+    // ✅ Phase 6.5.4: רק מזהים, לא כל ה-query params
+    console.log('[PaymentController] Success callback - Order:', req.query.Order, 'CCode:', req.query.CCode, 'Id:', req.query.Id);
 
     // עבד את התשובה מ-HyPay
     const callbackResult = processCallback(req.query);
@@ -136,12 +137,19 @@ export const callbackSuccess = async (req, res) => {
       return res.redirect('/orders?error=' + encodeURIComponent('הזמנה לא נמצאה'));
     }
 
+    // ✅ בדיקה שההזמנה לא פגה
+    if (order.status === 'awaiting_payment' && order.expiresAt && order.expiresAt < new Date()) {
+      console.error(`⏰ [PaymentController] Order expired: ${order.orderNumber}`);
+      return res.redirect('/orders?error=' + encodeURIComponent('ההזמנה פגה - אנא נסה שוב'));
+    }
+
     // עדכן הזמנה
     order.payment = order.payment || {};
     order.payment.status = callbackResult.isHold ? 'hold' : 'charged';
     order.payment.hypTransactionId = callbackResult.transactionId;
     order.payment.hypAuthCode = callbackResult.authCode;
     order.payment.hypUid = callbackResult.uid;
+    order.payment.userId = callbackResult.userId;  // ת.ז. שהמשתמש מילא
     order.payment.holdAmount = callbackResult.amount;
     order.payment.holdAt = new Date();
     order.payment.method = 'credit_card';
@@ -165,8 +173,12 @@ export const callbackSuccess = async (req, res) => {
       timestamp: new Date()
     });
 
-    // עדכן סטטוס הזמנה
-    if (order.status === 'pending') {
+    // ✅ תשלום הצליח - הזמנה הופכת ל"אמיתית"!
+    if (order.status === 'awaiting_payment') {
+      order.status = 'pending';  // מ-awaiting_payment ל-pending
+      order.expiresAt = null;  // ביטול TTL - ההזמנה קבועה!
+      console.log(`✅ [PaymentController] Order ${order.orderNumber} confirmed - no longer temporary`);
+    } else if (order.status === 'pending') {
       order.status = 'in_progress';
     }
 
@@ -174,12 +186,46 @@ export const callbackSuccess = async (req, res) => {
 
     console.log(`[PaymentController] Order ${order.orderNumber} payment updated successfully`);
 
-    // הפנה לדף הזמנה
-    return res.redirect(`/orders/${order._id}?payment=success`);
+    // ✅ צור טוקן מהעסקה (נחוץ ל-Partial Capture)
+    if (callbackResult.isHold && callbackResult.transactionId) {
+      console.log(`[PaymentController] Creating token for order ${order.orderNumber}...`);
+
+      const { createTokenFromTransaction } = await import('../services/paymentService.js');
+      const tokenResult = await createTokenFromTransaction(callbackResult.transactionId);
+
+      if (tokenResult.success) {
+        console.log('✅ [PaymentController] Token created successfully!');
+        order.payment.hypToken = tokenResult.token;
+        order.payment.hypTokenExpiry = tokenResult.tokef;
+        await order.save();
+      } else {
+        console.error('❌ [PaymentController] Failed to create token:', tokenResult.error);
+        // לא נכשיל את כל הפעולה בגלל שהטוקן לא נוצר - נמשיך עם commitTrans רגיל
+      }
+    }
+
+    // ✅ תשלום הצליח - מחק את העגלה של המשתמש!
+    const Cart = (await import('../models/Cart.js')).default;
+    const deletedCart = await Cart.findOneAndDelete({ user: order.user });
+    if (deletedCart) {
+      console.log(`🛒 [PaymentController] Cart cleared for user ${order.user} after successful payment`);
+    }
+
+    // החזר תשובת הצלחה פשוטה
+    // הפרונטאנד ישתמש בפולינג כדי לזהות את העדכון
+    return res.status(200).json({
+      success: true,
+      message: 'תשלום עודכן בהצלחה',
+      orderNumber: order.orderNumber,
+      orderId: order._id
+    });
 
   } catch (error) {
     console.error('[PaymentController] callbackSuccess error:', error);
-    return res.redirect(`/orders?error=${encodeURIComponent('שגיאה בעיבוד התשלום')}`);
+    return res.status(500).json({
+      success: false,
+      error: 'שגיאה בעיבוד התשלום'
+    });
   }
 };
 
@@ -189,7 +235,8 @@ export const callbackSuccess = async (req, res) => {
  */
 export const callbackError = async (req, res) => {
   try {
-    console.log('[PaymentController] Error callback received:', req.query);
+    // ✅ Phase 6.5.4: רק מזהים ושגיאה, לא כל ה-query params
+    console.log('[PaymentController] Error callback - Order:', req.query.Order, 'CCode:', req.query.CCode, 'Error:', req.query.error);
 
     const callbackResult = processCallback(req.query);
     const errorMessage = callbackResult.error || 'התשלום נכשל';
@@ -214,12 +261,19 @@ export const callbackError = async (req, res) => {
       }
     }
 
-    // הפנה לדף שגיאה
-    return res.redirect(`/cart?error=${encodeURIComponent(errorMessage)}`);
+    // החזר תשובת שגיאה
+    return res.status(200).json({
+      success: false,
+      error: errorMessage,
+      orderNumber: req.query.Order
+    });
 
   } catch (error) {
     console.error('[PaymentController] callbackError error:', error);
-    return res.redirect(`/cart?error=${encodeURIComponent('שגיאה בתשלום')}`);
+    return res.status(500).json({
+      success: false,
+      error: 'שגיאה בעיבוד callback'
+    });
   }
 };
 

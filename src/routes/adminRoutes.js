@@ -407,6 +407,26 @@ router.post(
   adminOrderItemsController.bulkOrderFromSupplier
 );
 
+// @route   PUT /api/admin/orders/:orderId/items/:itemId/israel-tracking
+router.put(
+  '/orders/:orderId/items/:itemId/israel-tracking',
+  validateMongoId,
+  requireAdminOrManager,
+  checkOrderAccess('edit'),
+  auditLog('UPDATE_ISRAEL_TRACKING', 'OrderItem'),
+  adminOrderItemsController.updateIsraelTracking
+);
+
+// @route   PUT /api/admin/orders/:orderId/items/:itemId/customer-tracking
+router.put(
+  '/orders/:orderId/items/:itemId/customer-tracking',
+  validateMongoId,
+  requireAdminOrManager,
+  checkOrderAccess('edit'),
+  auditLog('UPDATE_CUSTOMER_TRACKING', 'OrderItem'),
+  adminOrderItemsController.updateCustomerTracking
+);
+
 // ============================================
 // SYSTEM SETTINGS ROUTES (NEW)
 // ============================================

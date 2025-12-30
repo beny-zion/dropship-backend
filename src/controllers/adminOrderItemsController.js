@@ -956,11 +956,203 @@ export const bulkOrderFromSupplier = async (req, res) => {
   }
 };
 
+/**
+ * @desc    עדכון מעקב משלוח בינלאומי לפריט (מארה"ב לישראל)
+ * @route   PUT /api/admin/orders/:orderId/items/:itemId/israel-tracking
+ * @access  Private/Admin
+ */
+export const updateIsraelTracking = async (req, res) => {
+  try {
+    const { orderId, itemId } = req.params;
+    const { trackingNumber, carrier, estimatedArrival, notes } = req.body;
+
+    // Validation
+    if (!trackingNumber || !carrier) {
+      return res.status(400).json({
+        success: false,
+        message: 'נא להזין מספר מעקב וחברת משלוח'
+      });
+    }
+
+    // Find order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
+    }
+
+    // Find item
+    const item = order.items.id(itemId);
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'פריט לא נמצא'
+      });
+    }
+
+    // Check if item is cancelled
+    if (item.cancellation?.cancelled) {
+      return res.status(400).json({
+        success: false,
+        message: 'לא ניתן לעדכן מעקב לפריט מבוטל'
+      });
+    }
+
+    // Update israel tracking
+    item.israelTracking = {
+      trackingNumber,
+      carrier,
+      shippedAt: new Date(),
+      estimatedArrival: estimatedArrival ? new Date(estimatedArrival) : null,
+      addedBy: req.user.id,
+      notes: notes || null
+    };
+
+    // Add to status history
+    item.statusHistory.push({
+      status: item.itemStatus,
+      changedAt: new Date(),
+      changedBy: req.user.id,
+      notes: `מעקב בינלאומי נוסף: ${trackingNumber} (${carrier})`
+    });
+
+    // Add to order timeline
+    order.timeline.push({
+      status: order.status,
+      message: `מעקב בינלאומי נוסף לפריט "${item.name}": ${trackingNumber}`,
+      timestamp: new Date()
+    });
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: 'מעקב בינלאומי עודכן בהצלחה',
+      data: {
+        order,
+        item
+      }
+    });
+  } catch (error) {
+    console.error('Error updating israel tracking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בעדכון מעקב בינלאומי',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    עדכון מעקב משלוח ללקוח (בתוך ישראל)
+ * @route   PUT /api/admin/orders/:orderId/items/:itemId/customer-tracking
+ * @access  Private/Admin
+ */
+export const updateCustomerTracking = async (req, res) => {
+  try {
+    const { orderId, itemId } = req.params;
+    const { trackingNumber, carrier, estimatedDelivery, notes } = req.body;
+
+    // Validation
+    if (!trackingNumber || !carrier) {
+      return res.status(400).json({
+        success: false,
+        message: 'נא להזין מספר מעקב וחברת משלוח'
+      });
+    }
+
+    // Find order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
+    }
+
+    // Find item
+    const item = order.items.id(itemId);
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'פריט לא נמצא'
+      });
+    }
+
+    // Check if item is cancelled
+    if (item.cancellation?.cancelled) {
+      return res.status(400).json({
+        success: false,
+        message: 'לא ניתן לעדכן מעקב לפריט מבוטל'
+      });
+    }
+
+    // Update customer tracking
+    item.customerTracking = {
+      trackingNumber,
+      carrier,
+      shippedAt: new Date(),
+      estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
+      addedBy: req.user.id,
+      notes: notes || null
+    };
+
+    // Update item status to shipped_to_customer if currently at arrived_israel
+    if (item.itemStatus === 'arrived_israel') {
+      item.itemStatus = 'shipped_to_customer';
+
+      item.statusHistory.push({
+        status: 'shipped_to_customer',
+        changedAt: new Date(),
+        changedBy: req.user.id,
+        notes: `נשלח ללקוח עם מעקב: ${trackingNumber} (${carrier})`
+      });
+    } else {
+      // Just add history without changing status
+      item.statusHistory.push({
+        status: item.itemStatus,
+        changedAt: new Date(),
+        changedBy: req.user.id,
+        notes: `מעקב ללקוח נוסף: ${trackingNumber} (${carrier})`
+      });
+    }
+
+    // Add to order timeline
+    order.timeline.push({
+      status: order.status,
+      message: `מעקב משלוח ללקוח נוסף לפריט "${item.name}": ${trackingNumber}`,
+      timestamp: new Date()
+    });
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: 'מעקב משלוח ללקוח עודכן בהצלחה',
+      data: {
+        order,
+        item
+      }
+    });
+  } catch (error) {
+    console.error('Error updating customer tracking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בעדכון מעקב ללקוח',
+      error: error.message
+    });
+  }
+};
+
 export default {
   updateItemStatus,
   orderFromSupplier,
   cancelItem,
   getItemHistory,
   bulkUpdateItems,
-  bulkOrderFromSupplier
+  bulkOrderFromSupplier,
+  updateIsraelTracking,
+  updateCustomerTracking
 };

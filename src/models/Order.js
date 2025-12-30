@@ -76,8 +76,36 @@ const orderItemSchema = new mongoose.Schema({
       ref: 'User'
     },
     supplierOrderNumber: String,      // מספר הזמנה של הספק
-    supplierTrackingNumber: String,   // מספר מעקב
+    supplierTrackingNumber: String,   // מספר מעקב מהספק
     actualCost: Number,               // עלות בפועל (אם שונה ממחיר צפוי)
+    notes: String
+  },
+
+  // מעקב משלוח בינלאומי (מארה"ב לישראל)
+  israelTracking: {
+    trackingNumber: String,           // מספר מעקב בינלאומי
+    carrier: String,                  // חברת משלוח (FedEx, DHL, וכו')
+    shippedAt: Date,                  // תאריך שליחה
+    estimatedArrival: Date,           // תאריך הגעה משוער לישראל
+    arrivedAt: Date,                  // תאריך הגעה בפועל
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    notes: String
+  },
+
+  // מעקב משלוח ללקוח (בתוך ישראל)
+  customerTracking: {
+    trackingNumber: String,           // מספר מעקב למשלוח ללקוח
+    carrier: String,                  // חברת משלוח (דואר ישראל, DHL, וכו')
+    shippedAt: Date,                  // תאריך שליחה ללקוח
+    estimatedDelivery: Date,          // תאריך משלוח משוער
+    deliveredAt: Date,                // תאריך מסירה בפועל
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
     notes: String
   },
 
@@ -194,8 +222,9 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    default: 'pending',
+    default: 'awaiting_payment',
     enum: [
+      'awaiting_payment',           // ✅ NEW - ממתין לתשלום (הזמנה זמנית)
       'pending',                    // ממתין לטיפול
       'in_progress',                // בתהליך
       'ready_to_ship',              // מוכן למשלוח
@@ -211,6 +240,13 @@ const orderSchema = new mongoose.Schema({
       'arrived_israel_warehouse',   // LEGACY - maps to 'ready_to_ship'
       'shipped_to_customer'         // LEGACY - maps to 'shipped'
     ]
+  },
+
+  // ✅ NEW: TTL - זמן תפוגה להזמנה זמנית
+  expiresAt: {
+    type: Date,
+    index: true,  // חשוב ל-Cleanup Job
+    default: null
   },
 
   // ✅ NEW: Materialized Computed Status Fields
@@ -290,6 +326,15 @@ const orderSchema = new mongoose.Schema({
     hypUid: {
       type: String,
       index: true  // UID מהתשובה של J5 hold
+    },
+
+    // ✅ טוקן לביצוע Partial Capture
+    hypToken: {
+      type: String,
+      index: true  // טוקן 19 ספרות מ-getToken
+    },
+    hypTokenExpiry: {
+      type: String  // תוקף בפורמט YYMM
     },
 
     // סכומים

@@ -40,8 +40,25 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet());
+
+// CORS Configuration - Support multiple allowed origins
+// ALLOWED_ORIGINS: comma-separated list (e.g., "https://example.com,https://www.example.com")
+// Falls back to FRONTEND_URL if ALLOWED_ORIGINS is not set
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [process.env.FRONTEND_URL || 'http://localhost:3000'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -251,8 +268,8 @@ function startPaymentChargingJob() {
     }
   }, 30000);
 
-  // הרץ כל 10 דקות
-  const TEN_MINUTES = 10 * 60 * 1000;
+  // הרץ כל 3 דקות (לצורך בדיקות)
+  const THREE_MINUTES = 3 * 60 * 1000;
   setInterval(async () => {
     console.log('[PaymentJob] 🔄 הרצת chargeReadyOrders...');
     try {
@@ -261,9 +278,60 @@ function startPaymentChargingJob() {
     } catch (error) {
       console.error('[PaymentJob] ❌ שגיאה בהרצת Job:', error.message);
     }
-  }, TEN_MINUTES);
+  }, THREE_MINUTES);
 
-  console.log('💳 Payment Charging Job scheduled (every 10 minutes)');
+  console.log('💳 Payment Charging Job scheduled (every 3 minutes)');
+
+  // ✅ Cleanup Job - מחק הזמנות שפג תוקפן (כל יום ב-3AM)
+  const scheduleCleanupJob = () => {
+    const now = new Date();
+    const scheduledTime = new Date();
+
+    // קבע לשעה 3:00 בלילה
+    scheduledTime.setHours(3, 0, 0, 0);
+
+    // אם עברנו את 3AM היום, תזמן למחר
+    if (now > scheduledTime) {
+      scheduledTime.setDate(scheduledTime.getDate() + 1);
+    }
+
+    const timeUntilCleanup = scheduledTime - now;
+    const hoursUntil = Math.round(timeUntilCleanup / 1000 / 60 / 60);
+
+    console.log('🧹━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🧹 Cleanup Job Configuration:');
+    console.log(`   📅 Next run: ${scheduledTime.toLocaleString('he-IL')}`);
+    console.log(`   ⏰ Time until cleanup: ${hoursUntil} hours`);
+    console.log('🧹━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    setTimeout(async () => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 [CleanupJob] Daily cleanup started at 3AM');
+      console.log(`   Time: ${new Date().toLocaleString('he-IL')}`);
+
+      try {
+        const { cleanupExpiredOrders } = await import('./jobs/cleanupExpiredOrders.js');
+        const deleted = await cleanupExpiredOrders();
+
+        if (deleted > 0) {
+          console.log(`✅ [CleanupJob] Successfully cleaned ${deleted} expired order(s)`);
+        } else {
+          console.log('ℹ️  [CleanupJob] No expired orders found');
+        }
+      } catch (error) {
+        console.error('❌ [CleanupJob] Error during cleanup:', error.message);
+        console.error('   Stack:', error.stack);
+      }
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // תזמן את ההרצה הבאה (24 שעות מעכשיו)
+      scheduleCleanupJob();
+    }, timeUntilCleanup);
+  };
+
+  // התחל את תזמון ה-Job
+  scheduleCleanupJob();
 }
 
 export default app;

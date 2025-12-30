@@ -116,6 +116,12 @@ export function updateOrderPricing(order) {
   if (allItemsCancelled) {
     return {
       ...order.pricing,
+      // ✅ עדכן גם את הערכים המקוריים (מה שמוצג למשתמש)
+      subtotal: 0,
+      shipping: 0,
+      tax: 0,
+      total: 0,
+      // ערכים adjusted (לצורך היסטוריה/דיווח)
       adjustedSubtotal: 0,
       adjustedShipping: 0,
       adjustedTax: 0,
@@ -144,6 +150,12 @@ export function updateOrderPricing(order) {
 
   return {
     ...order.pricing,
+    // ✅ עדכן את הערכים המקוריים (מה שמוצג למשתמש בסיכום)
+    subtotal: activeItemsSubtotal,
+    shipping: adjustedShipping,
+    tax: adjustedTax,
+    total: adjustedTotal,
+    // ערכים adjusted (לצורך היסטוריה/דיווח)
     adjustedSubtotal: activeItemsSubtotal,
     adjustedShipping,
     adjustedTax,
