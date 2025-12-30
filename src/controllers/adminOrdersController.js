@@ -212,11 +212,12 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   // Update status
   order.status = status;
 
-  // Add timeline entry
+  // Add timeline entry (admin status updates are internal by default)
   order.timeline.push({
     status,
     message: message || await getDefaultStatusMessage(status),
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    internal: true
   });
 
   // Handle credit hold
@@ -289,8 +290,9 @@ export const updateTracking = asyncHandler(async (req, res) => {
 
     order.timeline.push({
       status: 'shipped_to_customer',
-      message: `ההזמנה נשלחה ללקוח. מספר מעקב: ${trackingNumber}`,
-      timestamp: Date.now()
+      message: `ההזמנה נשלחה! מספר מעקב: ${trackingNumber}`,
+      timestamp: Date.now(),
+      internal: false
     });
   }
 
@@ -361,9 +363,19 @@ export const cancelOrder = asyncHandler(async (req, res) => {
   order.status = 'cancelled';
   order.timeline.push({
     status: 'cancelled',
-    message: reason || 'ההזמנה בוטלה על ידי המערכת',
-    timestamp: Date.now()
+    message: 'ההזמנה בוטלה',
+    timestamp: Date.now(),
+    internal: false
   });
+  // Also log the reason internally
+  if (reason) {
+    order.timeline.push({
+      status: 'cancelled',
+      message: `סיבת ביטול: ${reason}`,
+      timestamp: Date.now(),
+      internal: true
+    });
+  }
 
   await order.save();
 

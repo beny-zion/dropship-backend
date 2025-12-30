@@ -427,6 +427,17 @@ router.put(
   adminOrderItemsController.updateCustomerTracking
 );
 
+// @route   PUT /api/admin/orders/:orderId/items/:itemId/manual-status
+// Phase 9.3: Manual status override - prevents automation from changing status
+router.put(
+  '/orders/:orderId/items/:itemId/manual-status',
+  validateMongoId,
+  requireAdminOrManager,
+  checkOrderAccess('edit'),
+  auditLog('MANUAL_STATUS_UPDATE', 'OrderItem'),
+  adminOrderItemsController.manualStatusUpdate
+);
+
 // ============================================
 // SYSTEM SETTINGS ROUTES (NEW)
 // ============================================

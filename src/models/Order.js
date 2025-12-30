@@ -68,6 +68,12 @@ const orderItemSchema = new mongoose.Schema({
     default: 'pending'
   },
 
+  // Phase 9.3: Manual status override - prevents automation from changing status
+  manualStatusOverride: {
+    type: Boolean,
+    default: false
+  },
+
   // פרטי הזמנה מספק
   supplierOrder: {
     orderedAt: Date,
@@ -460,6 +466,11 @@ const orderSchema = new mongoose.Schema({
     timestamp: {
       type: Date,
       default: () => new Date()
+    },
+    // Phase 9.2: internal events are hidden from customers
+    internal: {
+      type: Boolean,
+      default: false
     }
   }]
 }, {

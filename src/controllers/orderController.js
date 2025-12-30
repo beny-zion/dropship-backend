@@ -368,11 +368,12 @@ export const cancelOrder = async (req, res) => {
       order.creditHold.releasedAt = Date.now();
     }
 
-    // Add timeline entry
+    // Add timeline entry (visible to customer)
     order.timeline.push({
       status: 'cancelled',
-      message: 'ההזמנה בוטלה על ידי הלקוח',
-      timestamp: Date.now()
+      message: 'ההזמנה בוטלה',
+      timestamp: Date.now(),
+      internal: false
     });
 
     await order.save();
