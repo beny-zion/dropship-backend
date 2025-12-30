@@ -544,7 +544,8 @@ orderSchema.pre('save', function(next) {
     this.timeline.push({
       status: 'pending',
       message: 'ההזמנה התקבלה',
-      timestamp: new Date()
+      timestamp: new Date(),
+      internal: false // Customer should see this
     });
   }
   next();
@@ -579,11 +580,12 @@ orderSchema.pre('save', function(next) {
     console.log(`[Order ${this.orderNumber}] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)`);
     this.payment.status = 'ready_to_charge';
 
-    // הוסף לטיימליין
+    // הוסף לטיימליין (internal - payment status)
     this.timeline.push({
       status: 'ready_to_charge',
       message: 'כל הפריטים הוכרעו - מוכן לגביה',
-      timestamp: new Date()
+      timestamp: new Date(),
+      internal: true
     });
   }
 
