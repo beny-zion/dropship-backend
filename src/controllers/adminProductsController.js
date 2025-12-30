@@ -71,6 +71,7 @@ export const getAllProducts = asyncHandler(async (req, res) => {
   const [products, total] = await Promise.all([
     Product.find(filter)
       .populate('category', 'name slug')
+      .populate('inventoryChecks.lastChecked.checkedBy', 'name email') // 🆕 טען גם inventoryChecks!
       .sort(sortBy)
       .skip(skip)
       .limit(limit)
@@ -301,85 +302,241 @@ export const createProduct = asyncHandler(async (req, res) => {
 // @route   PUT /api/admin/products/:id
 // @access  Private/Admin
 export const updateProduct = asyncHandler(async (req, res) => {
-  let product = await Product.findById(req.params.id);
+  const mongoose = (await import('mongoose')).default;
+  const ProductAvailabilityService = (await import('../services/ProductAvailabilityService.js')).default;
 
-  if (!product) {
-    return res.status(404).json({
-      success: false,
-      message: 'מוצר לא נמצא'
-    });
-  }
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  // Check if category exists in the new category system
-  if (req.body.category && req.body.category !== product.category?.toString()) {
-    const category = await Category.findById(req.body.category);
-    if (!category) {
-      return res.status(400).json({
+  try {
+    // 1️⃣ שלוף את המוצר הקיים
+    let product = await Product.findById(req.params.id).session(session);
+
+    if (!product) {
+      await session.abortTransaction();
+      return res.status(404).json({
         success: false,
-        message: 'הקטגוריה שנבחרה לא קיימת במערכת'
+        message: 'מוצר לא נמצא'
       });
     }
-  }
 
-  // ניקוי ASIN ריק
-  if (req.body.asin === '' || req.body.asin === null) {
-    req.body.asin = undefined; // מחיקה של השדה
-  }
-
-  // If updating ASIN, check if new ASIN exists
-  if (req.body.asin && req.body.asin.trim() && req.body.asin !== product.asin) {
-    const existingProduct = await Product.findOne({ asin: req.body.asin.trim() });
-    if (existingProduct) {
-      return res.status(400).json({
-        success: false,
-        message: 'ASIN זה כבר קיים במערכת'
-      });
-    }
-  }
-
-  // בדיקת SKU ייחודיים בווריאנטים - רק אם יש SKU בפועל
-  if (req.body.variants && req.body.variants.length > 0) {
-    const skus = req.body.variants.map(v => v.sku).filter(Boolean);
-
-    // רק אם יש SKU בפועל, נבדוק ייחודיות
-    if (skus.length > 0) {
-      const uniqueSkus = new Set(skus);
-
-      // בדיקה שאין SKU כפול בתוך אותו מוצר
-      if (skus.length !== uniqueSkus.size) {
+    // Check if category exists in the new category system
+    if (req.body.category && req.body.category !== product.category?.toString()) {
+      const category = await Category.findById(req.body.category).session(session);
+      if (!category) {
+        await session.abortTransaction();
         return res.status(400).json({
           success: false,
-          message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
+          message: 'הקטגוריה שנבחרה לא קיימת במערכת'
+        });
+      }
+    }
+
+    // ניקוי ASIN ריק
+    if (req.body.asin === '' || req.body.asin === null) {
+      req.body.asin = undefined;
+    }
+
+    // If updating ASIN, check if new ASIN exists
+    if (req.body.asin && req.body.asin.trim() && req.body.asin !== product.asin) {
+      const existingProduct = await Product.findOne({ asin: req.body.asin.trim() }).session(session);
+      if (existingProduct) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: 'ASIN זה כבר קיים במערכת'
+        });
+      }
+    }
+
+    // בדיקת SKU ייחודיים בווריאנטים
+    if (req.body.variants && req.body.variants.length > 0) {
+      const skus = req.body.variants.map(v => v.sku).filter(Boolean);
+
+      if (skus.length > 0) {
+        const uniqueSkus = new Set(skus);
+
+        if (skus.length !== uniqueSkus.size) {
+          await session.abortTransaction();
+          return res.status(400).json({
+            success: false,
+            message: 'SKU חייב להיות ייחודי בכל הווריאנטים'
+          });
+        }
+      }
+    }
+
+    // 2️⃣ 🔍 בדוק אם יש שינוי בזמינות (Smart Detection)
+    console.log('🔍 [updateProduct] Running Smart Detection...');
+    console.log('🔍 [updateProduct] Current product stock:', product.stock);
+    console.log('🔍 [updateProduct] Update data stock:', req.body.stock);
+    const availabilityChanged = detectAvailabilityChanges(product, req.body);
+    console.log('🔍 [updateProduct] Smart Detection result:', availabilityChanged);
+
+    // 3️⃣ אם יש שינוי בזמינות - השתמש בשירות המרכזי
+    if (availabilityChanged.hasChanges) {
+      console.log('✅ [updateProduct] Availability changes detected, using centralized service...');
+      for (const change of availabilityChanged.changes) {
+        console.log('🔄 [updateProduct] Processing change:', change);
+        await ProductAvailabilityService.updateAvailability({
+          productId: product._id,
+          variantSku: change.variantSku,
+          available: change.newValue,
+          reason: change.reason || 'עדכון ידני על ידי מנהל',
+          source: 'admin_edit',
+          triggeredBy: req.user._id,
+          metadata: {
+            previousValue: change.oldValue,
+            editType: 'full_product_update'
+          },
+          session
         });
       }
 
-      // הסרנו את הבדיקה הגלובלית - SKU לא חייב להיות ייחודי בין מוצרים שונים
-      // מותגים שונים יכולים להשתמש באותו SKU פנימי
+      // ⭐ טען מחדש את המוצר אחרי עדכוני הזמינות
+      product = await Product.findById(product._id).session(session);
+    }
+
+    // 4️⃣ עדכן את שאר השדות (הכל חוץ מזמינות)
+    const sanitizedData = sanitizeUpdateData(req.body, availabilityChanged);
+
+    Object.assign(product, sanitizedData);
+
+    // 5️⃣ שמור
+    await product.save({ session });
+    await session.commitTransaction();
+
+    // Convert ID to string
+    const productWithStringId = {
+      ...product.toObject(),
+      _id: product._id.toString()
+    };
+
+    res.json({
+      success: true,
+      message: 'המוצר עודכן בהצלחה',
+      data: productWithStringId,
+      availabilityUpdates: availabilityChanged.changes.length
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+});
+
+/**
+ * 🔍 פונקציה לזיהוי שינויי זמינות
+ */
+function detectAvailabilityChanges(currentProduct, updateData) {
+  const changes = [];
+
+  // בדיקת זמינות כללית של המוצר
+  if (
+    updateData.stock?.available !== undefined &&
+    updateData.stock.available !== currentProduct.stock?.available
+  ) {
+    changes.push({
+      type: 'product',
+      variantSku: null,
+      oldValue: currentProduct.stock?.available,
+      newValue: updateData.stock.available,
+      reason: 'עדכון זמינות מוצר ראשי'
+    });
+  }
+
+  // בדיקת שינויים בווריאנטים
+  if (updateData.variants && Array.isArray(updateData.variants)) {
+    updateData.variants.forEach((newVariant) => {
+      const oldVariant = currentProduct.variants.find(
+        v => v.sku === newVariant.sku
+      );
+
+      if (oldVariant) {
+        // ווריאנט קיים - בדוק אם הזמינות השתנתה
+        if (
+          newVariant.stock?.available !== undefined &&
+          newVariant.stock.available !== oldVariant.stock?.available
+        ) {
+          changes.push({
+            type: 'variant',
+            variantSku: newVariant.sku,
+            oldValue: oldVariant.stock?.available,
+            newValue: newVariant.stock.available,
+            reason: `עדכון זמינות ווריאנט ${newVariant.color} ${newVariant.size}`
+          });
+        }
+      } else {
+        // ווריאנט חדש - אם הוא לא זמין, זה שינוי משמעותי
+        if (newVariant.stock?.available === false) {
+          changes.push({
+            type: 'variant',
+            variantSku: newVariant.sku,
+            oldValue: undefined,
+            newValue: false,
+            reason: `ווריאנט חדש נוסף כלא זמין: ${newVariant.color} ${newVariant.size}`
+          });
+        }
+      }
+    });
+
+    // בדוק ווריאנטים שנמחקו
+    currentProduct.variants.forEach((oldVariant) => {
+      const stillExists = updateData.variants.find(
+        v => v.sku === oldVariant.sku
+      );
+
+      if (!stillExists && oldVariant.stock?.available) {
+        changes.push({
+          type: 'variant',
+          variantSku: oldVariant.sku,
+          oldValue: true,
+          newValue: false,
+          reason: `ווריאנט נמחק: ${oldVariant.color} ${oldVariant.size}`
+        });
+      }
+    });
+  }
+
+  return {
+    hasChanges: changes.length > 0,
+    changes
+  };
+}
+
+/**
+ * 🧹 ניקוי data - הסרת שדות שכבר טופלו
+ */
+function sanitizeUpdateData(updateData, availabilityChanges) {
+  const sanitized = { ...updateData };
+
+  // אם טיפלנו בזמינות דרך השירות, הסר אותה מה-update הרגיל
+  if (availabilityChanges.hasChanges) {
+    // הסר stock.available אבל השאר שאר שדות stock
+    if (sanitized.stock) {
+      const { available, ...restStock } = sanitized.stock;
+      sanitized.stock = restStock;
+    }
+
+    // הסר stock.available מווריאנטים אבל השאר שאר השדות
+    if (sanitized.variants) {
+      sanitized.variants = sanitized.variants.map(variant => {
+        if (variant.stock) {
+          const { available, ...restStock } = variant.stock;
+          return {
+            ...variant,
+            stock: restStock
+          };
+        }
+        return variant;
+      });
     }
   }
 
-  product = await Product.findByIdAndUpdate(
-    req.params.id,
-    req.body,
-    {
-      new: true,
-      runValidators: true,
-      lean: true
-    }
-  );
-
-  // Convert ID to string
-  const productWithStringId = {
-    ...product,
-    _id: product._id.toString()
-  };
-
-  res.json({
-    success: true,
-    message: 'המוצר עודכן בהצלחה',
-    data: productWithStringId
-  });
-});
+  return sanitized;
+}
 
 // @desc    Delete product
 // @route   DELETE /api/admin/products/:id
@@ -581,6 +738,42 @@ export const updateProductStatus = asyncHandler(async (req, res) => {
   });
 });
 
+// עדכון זמינות מוצר וווריאנטים
+export const updateProductAvailability = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { productAvailable, variants } = req.body;
+
+  const product = await Product.findById(id);
+
+  if (!product) {
+    res.status(404);
+    throw new Error('מוצר לא נמצא');
+  }
+
+  // עדכון זמינות מוצר ראשי
+  if (typeof productAvailable === 'boolean') {
+    product.stock.available = productAvailable;
+  }
+
+  // עדכון זמינות ווריאנטים
+  if (variants && Array.isArray(variants)) {
+    variants.forEach(({ sku, available }) => {
+      const variant = product.variants.find(v => v.sku === sku);
+      if (variant && typeof available === 'boolean') {
+        variant.stock.available = available;
+      }
+    });
+  }
+
+  await product.save();
+
+  res.json({
+    success: true,
+    message: 'הזמינות עודכנה בהצלחה',
+    data: product
+  });
+});
+
 export default {
   getAllProducts,
   getProductById,
@@ -590,5 +783,6 @@ export default {
   updateStock,
   toggleFeatured,
   bulkDeleteProducts,
-  updateProductStatus
+  updateProductStatus,
+  updateProductAvailability
 };

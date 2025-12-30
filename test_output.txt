@@ -1,0 +1,1107 @@
+
+> amazon-dropship-backend@1.0.0 test
+> node --experimental-vm-modules node_modules/jest/bin/jest.js
+
+  console.log
+    ⚠️  קובץ הבדיקות נוצר בהצלחה - צריך לממש את הפונקציות בשלבים הבאים
+
+      at tests/payment.test.js:116:9
+
+  console.log
+    ✅ בדיקות paymentService מוכנות לריצה
+
+      at tests/paymentService.test.js:267:9
+
+  console.log
+    ✅ משתני סביבה:
+
+      at Object.<anonymous> (tests/payment.test.js:60:13)
+
+  console.log
+       - HYP_MASOF: 0010341822
+
+      at Object.<anonymous> (tests/payment.test.js:61:13)
+
+  console.log
+    🔵 Hyp Pay Request: {
+      action: 'soft',
+      amount: 299,
+      order: 'TEST-1766532411619',
+      postpone: 'True'
+    }
+
+      at sendRequest (src/utils/hypPayClient.js:48:13)
+
+  console.log
+       - HYP_TEST_MODE: true
+
+      at Object.<anonymous> (tests/payment.test.js:62:13)
+
+  console.log
+    ✅ בדיקות shippingCalculator מוכנות לריצה
+
+      at tests/shippingCalculator.test.js:192:9
+
+  console.log
+    🟢 Hyp Pay Response: { CCode: '6', success: false, Id: '0' }
+
+      at sendRequest (src/utils/hypPayClient.js:76:15)
+
+  console.log
+    ✅ חיבור ל-Hyp Pay API עובד
+
+      at Object.<anonymous> (tests/payment.test.js:105:15)
+
+  console.error
+    [PaymentService] holdCredit error: Error: Hyp Pay credentials not configured. Check HYP_MASOF and HYP_PASSP in .env
+        at sendRequest (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\src\utils\hypPayClient.js:34:11)
+        at holdCredit (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\src\services\paymentService.js:108:26)
+        at Object.<anonymous> (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\tests\paymentService.test.js:115:5)
+        at Promise.finally.completed (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:1557:28)
+        at new Promise (<anonymous>)
+        at callAsyncCircusFn (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:1497:10)
+        at _callCircusTest (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:1007:40)
+        at processTicksAndRejections (node:internal/process/task_queues:95:5)
+        at _runTest (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:947:3)
+        at C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:849:7
+        at _runTestsForDescribeBlock (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:862:11)
+        at _runTestsForDescribeBlock (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:857:11)
+        at run (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:761:3)
+        at runAndTransformResultsToJestFormat (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\jestAdapterInit.js:1918:21)
+        at jestAdapter (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-circus\build\runner.js:101:19)
+        at runTestInternal (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-runner\build\testWorker.js:275:16)
+        at runTest (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-runner\build\testWorker.js:343:7)
+        at Object.worker (C:\Users\1\Desktop\אמזון\amazon-dropship\backend\node_modules\jest-runner\build\testWorker.js:497:12)
+
+    [0m [90m 128 |[39m     }[33m;[39m
+     [90m 129 |[39m   } [36mcatch[39m (error) {
+    [31m[1m>[22m[39m[90m 130 |[39m     console[33m.[39merror([32m'[PaymentService] holdCredit error:'[39m[33m,[39m error)[33m;[39m
+     [90m     |[39m             [31m[1m^[22m[39m
+     [90m 131 |[39m     [36mreturn[39m {
+     [90m 132 |[39m       success[33m:[39m [36mfalse[39m[33m,[39m
+     [90m 133 |[39m       error[33m:[39m [32m'תקלה בתקשורת עם שער התשלום'[39m[33m,[39m[0m
+
+      at holdCredit (src/services/paymentService.js:130:13)
+
+  console.log
+    
+    ✅ בדיקת תזרים הזמנה מלא מוכנה לריצה!
+
+      at tests/fullOrderFlow.test.js:384:9
+
+  console.log
+    הרץ: npm test -- fullOrderFlow.test.js
+
+      at tests/fullOrderFlow.test.js:385:9
+
+  console.log
+    [DistributedLock] Instance ID: 64360-1766532412889
+
+      at src/utils/distributedLock.js:31:9
+
+  console.log
+    ✅ בדיקות Phase 3: Auto Charging Logic מוכנות לריצה
+
+      at tests/autoCharging.test.js:279:9
+
+  console.log
+    ✅ Test setup complete - Order: TEST-CANCEL-1766532416170
+
+      at Object.<anonymous> (tests/customerCancellation.test.js:85:13)
+
+  console.log
+    ❌ Cache MISS: settings:system
+
+      at cacheGet (src/utils/cache.js:45:13)
+
+  console.log
+    [Order TEST-AUTO-1766532417113] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)
+
+      at model.<anonymous> (src/models/Order.js:515:13)
+
+  console.log
+    Payment status: pending
+
+      at Object.<anonymous> (tests/customerCancellation.test.js:224:15)
+
+  console.log
+    
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:38:13)
+
+  console.log
+    🛒 לקוח יוצר הזמנה חדשה
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:39:13)
+
+  console.log
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:40:13)
+
+  console.log
+    [Order TEST-AUTO-1766532418208] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)
+
+      at model.<anonymous> (src/models/Order.js:515:13)
+
+  console.log
+    
+    📦 פרטי ההזמנה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:90:13)
+
+  console.log
+       מספר הזמנה: DEMO-1766532418227
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:91:13)
+
+  console.log
+       לקוח: ישראל ישראלי
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:92:13)
+
+  console.log
+       טלפון: 050-1234567
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:93:13)
+
+  console.log
+       כתובת: רחוב הרצל 10, תל אביב
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:94:13)
+
+  console.log
+    
+    🛍️  פריטים בהזמנה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:96:13)
+
+  console.log
+       1. נעלי ספורט Nike Air Max
+
+      at tests/fullOrderFlow.test.js:98:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מחיר: ₪450
+
+      at tests/fullOrderFlow.test.js:99:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          כמות: 1
+
+      at tests/fullOrderFlow.test.js:100:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          ספק: Amazon
+
+      at tests/fullOrderFlow.test.js:101:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: pending
+
+      at tests/fullOrderFlow.test.js:102:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       2. חולצת פולו Ralph Lauren
+
+      at tests/fullOrderFlow.test.js:98:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מחיר: ₪250
+
+      at tests/fullOrderFlow.test.js:99:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          כמות: 1
+
+      at tests/fullOrderFlow.test.js:100:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          ספק: Amazon
+
+      at tests/fullOrderFlow.test.js:101:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: pending
+
+      at tests/fullOrderFlow.test.js:102:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    
+    💰 פירוט מחירים:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:105:13)
+
+  console.log
+       סכום ביניים: ₪700
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:106:13)
+
+  console.log
+       משלוח: ₪49
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:107:13)
+
+  console.log
+       ───────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:108:13)
+
+  console.log
+       סה"כ לתשלום: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:109:13)
+
+  console.log
+    
+    💳 סטטוס תשלום:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:111:13)
+
+  console.log
+       סטטוס: pending
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:112:13)
+
+  console.log
+       שיטת תשלום: credit_card
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:113:13)
+
+  console.log
+    
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:121:13)
+
+  console.log
+    💳 תפיסת מסגרת אשראי - לא גובים עדיין!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:122:13)
+
+  console.log
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:123:13)
+
+  console.log
+    
+    🔍 בדיקת משתני סביבה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:126:13)
+
+  console.log
+       HYP_MASOF: 0010341822
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:127:13)
+
+  console.log
+       HYP_PASSP: hyp1234
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:128:13)
+
+  console.log
+       HYP_TEST_MODE: true
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:129:13)
+
+  console.log
+       HYP_API_URL: https://pay.hyp.co.il/p/
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:130:13)
+
+  console.log
+    
+    💳 פרטי תשלום:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:141:13)
+
+  console.log
+       כרטיס: **** **** **** 5614
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:142:13)
+
+  console.log
+       תוקף: 12/25
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:143:13)
+
+  console.log
+       סכום לנעילה: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:144:13)
+
+  console.log
+    
+    ⏳ שולח בקשה ל-Hyp Pay...
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:146:13)
+
+  console.log
+    🔵 Hyp Pay Request: {
+      action: 'soft',
+      amount: 749,
+      order: 'DEMO-1766532418227',
+      postpone: 'True'
+    }
+
+      at sendRequest (src/utils/hypPayClient.js:48:13)
+
+  console.log
+    💾 Cache SET: settings:system (TTL: 600s)
+
+      at cacheSet (src/utils/cache.js:52:11)
+
+  console.log
+    [Order TEST-AUTO-1766532419256] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)
+
+      at model.<anonymous> (src/models/Order.js:515:13)
+
+  console.log
+    🟢 Hyp Pay Response: { CCode: '800', success: true, Id: '370675174' }
+
+      at sendRequest (src/utils/hypPayClient.js:76:15)
+
+  console.log
+    
+    📥 תשובה מ-Hyp Pay:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:151:13)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:152:13)
+
+  console.log
+    Raw Response: {
+      "success": true,
+      "transactionId": "370675174",
+      "amount": 749,
+      "message": "מסגרת אשראי נתפסה בהצלחה",
+      "status": "hold",
+      "raw": {
+        "Id": "370675174",
+        "CCode": "800",
+        "Amount": "749",
+        "ACode": "0990220",
+        "Fild1": "",
+        "Fild2": "",
+        "Fild3": "\n"
+      }
+    }
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:153:13)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:154:13)
+
+  console.log
+    ✅ סטטוס: הצלחה!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:156:15)
+
+  console.log
+       מזהה עסקה: 370675174
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:157:15)
+
+  console.log
+       סכום שננעל: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:158:15)
+
+  console.log
+       הודעה: מסגרת אשראי נתפסה בהצלחה
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:159:15)
+
+  console.log
+    
+    💾 ההזמנה עודכנה במערכת:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:176:15)
+
+  console.log
+       payment.status: hold
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:177:15)
+
+  console.log
+       payment.hypTransactionId: 370675174
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:178:15)
+
+  console.log
+       payment.holdAmount: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:179:15)
+
+  console.log
+       payment.holdAt: 24.12.2025, 1:27:00
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:180:15)
+
+  console.log
+    
+    📝 היסטוריית תשלומים:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:182:15)
+
+  console.log
+       1. hold - ₪749 - ✅
+
+      at tests/fullOrderFlow.test.js:184:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מזהה: 370675174
+
+      at tests/fullOrderFlow.test.js:185:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          זמן: 24.12.2025, 1:27:00
+
+      at tests/fullOrderFlow.test.js:186:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:194:13)
+
+  console.log
+    
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:202:13)
+
+  console.log
+    👨‍💼 מנהל מזמין פריטים מ-Amazon
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:203:13)
+
+  console.log
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:204:13)
+
+  console.log
+    
+    📋 לפני הזמנה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:209:13)
+
+  console.log
+       1. נעלי ספורט Nike Air Max
+
+      at tests/fullOrderFlow.test.js:211:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: pending
+
+      at tests/fullOrderFlow.test.js:212:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       2. חולצת פולו Ralph Lauren
+
+      at tests/fullOrderFlow.test.js:211:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: pending
+
+      at tests/fullOrderFlow.test.js:212:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    
+    ⏳ מזמין פריט 1...
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:216:13)
+
+  console.log
+    ✅ פריט 1 הוזמן!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:226:13)
+
+  console.log
+    ⏳ מזמין פריט 2...
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:229:13)
+
+  console.log
+    [Order DEMO-1766532418227] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)
+
+      at model.<anonymous> (src/models/Order.js:515:13)
+
+  console.log
+    ✅ פריט 2 הוזמן!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:240:13)
+
+  console.log
+    
+    📋 אחרי הזמנה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:245:13)
+
+  console.log
+       1. נעלי ספורט Nike Air Max
+
+      at tests/fullOrderFlow.test.js:247:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: ordered
+
+      at tests/fullOrderFlow.test.js:248:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מספר הזמנת ספק: AMZ-112-123456
+
+      at tests/fullOrderFlow.test.js:250:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          הוזמן ב: 24.12.2025, 1:27:00
+
+      at tests/fullOrderFlow.test.js:251:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       2. חולצת פולו Ralph Lauren
+
+      at tests/fullOrderFlow.test.js:247:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: ordered
+
+      at tests/fullOrderFlow.test.js:248:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מספר הזמנת ספק: AMZ-112-123457
+
+      at tests/fullOrderFlow.test.js:250:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          הוזמן ב: 24.12.2025, 1:27:01
+
+      at tests/fullOrderFlow.test.js:251:17
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    
+    🤖 Pre-Save Hook פעל אוטומטית!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:255:13)
+
+  console.log
+       payment.status השתנה ל: ready_to_charge
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:256:13)
+
+  console.log
+       ✅ כל הפריטים הוכרעו - ההזמנה מוכנה לגביה!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:259:15)
+
+  console.log
+    
+    📝 טיימליין של ההזמנה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:262:13)
+
+  console.log
+       1. [pending] ההזמנה התקבלה
+
+      at tests/fullOrderFlow.test.js:264:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:26:58
+
+      at tests/fullOrderFlow.test.js:265:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       2. [in_progress] 🤖 עדכון אוטומטי: 1 מתוך 2 פריטים בתהליך הזמנה או משלוח
+
+      at tests/fullOrderFlow.test.js:264:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:27:00
+
+      at tests/fullOrderFlow.test.js:265:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       3. [ready_to_charge] כל הפריטים הוכרעו - מוכן לגביה
+
+      at tests/fullOrderFlow.test.js:264:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:27:01
+
+      at tests/fullOrderFlow.test.js:265:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:274:13)
+
+  console.log
+    💰 Job רץ וגובה את התשלום
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:275:13)
+
+  console.log
+    ======================================================================
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:276:13)
+
+  console.log
+    
+    📊 מצב לפני גביה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:281:13)
+
+  console.log
+       payment.status: ready_to_charge
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:282:13)
+
+  console.log
+       payment.holdAmount: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:283:13)
+
+  console.log
+       payment.chargedAmount: ₪0
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:284:13)
+
+  console.log
+    
+    ⏳ מבצע גביה דרך Hyp Pay...
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:286:13)
+
+  console.log
+    
+    💵 חישוב סכום סופי:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:293:13)
+
+  console.log
+       1. נעלי ספורט Nike Air Max: ₪450 x 1 = ₪450
+
+      at tests/fullOrderFlow.test.js:295:15
+          at Array.forEach (<anonymous>)
+
+  console.log
+       2. חולצת פולו Ralph Lauren: ₪250 x 1 = ₪250
+
+      at tests/fullOrderFlow.test.js:295:15
+          at Array.forEach (<anonymous>)
+
+  console.log
+       משלוח: ₪49
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:297:13)
+
+  console.log
+       ───────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:298:13)
+
+  console.log
+       סה"כ לגביה: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:299:13)
+
+  console.log
+    🔵 Hyp Pay Request: {
+      action: 'commitTrans',
+      amount: 749,
+      order: undefined,
+      postpone: undefined
+    }
+
+      at sendRequest (src/utils/hypPayClient.js:48:13)
+
+  console.log
+    [ChargeJob] 🔍 מחפש הזמנות מוכנות לגביה...
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:173:11)
+
+  console.log
+    🟢 Hyp Pay Response: { CCode: '0', success: true, Id: '370675174' }
+
+      at sendRequest (src/utils/hypPayClient.js:76:15)
+
+  console.log
+    
+    📥 תשובה מ-Hyp Pay:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:304:13)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:305:13)
+
+  console.log
+    ✅ סטטוס: הצלחה!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:307:15)
+
+  console.log
+       סכום שנגבה: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:308:15)
+
+  console.log
+       מזהה עסקה: 370675174
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:309:15)
+
+  console.log
+       הודעה: נגבו ₪749 בהצלחה
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:310:15)
+
+  console.log
+    [ChargeJob] 📋 נמצאו 1 הזמנות מוכנות לגביה
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:195:13)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:338:13)
+
+  console.log
+    [DistributedLock] ✅ Acquired lock: charge_order_694b2542dea93d5058eb404f (expires in 60s)
+
+      at acquireLock (src/utils/distributedLock.js:55:13)
+
+  console.log
+    [ChargeJob] 🔒 Acquired lock for order DEMO-1766532418227
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:221:17)
+
+  console.log
+    [ChargeJob] 🔄 מנסה לגבות הזמנה DEMO-1766532418227...
+
+      at chargeOrder (src/jobs/chargeReadyOrders.js:24:13)
+
+  console.log
+    🔵 Hyp Pay Request: {
+      action: 'commitTrans',
+      amount: 749,
+      order: undefined,
+      postpone: undefined
+    }
+
+      at sendRequest (src/utils/hypPayClient.js:48:13)
+
+  console.log
+    
+    💾 המצב הסופי של ההזמנה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:343:13)
+
+  console.log
+       מספר הזמנה: DEMO-1766532418227
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:344:13)
+
+  console.log
+       payment.status: charged
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:345:13)
+
+  console.log
+       payment.holdAmount: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:346:13)
+
+  console.log
+       payment.chargedAmount: ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:347:13)
+
+  console.log
+       payment.holdAt: 24.12.2025, 1:27:00
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:348:13)
+
+  console.log
+       payment.chargedAt: 24.12.2025, 1:27:03
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:349:13)
+
+  console.log
+    
+    📝 היסטוריית תשלומים מלאה:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:351:13)
+
+  console.log
+       1. [hold] ₪749
+
+      at tests/fullOrderFlow.test.js:353:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מזהה: 370675174
+
+      at tests/fullOrderFlow.test.js:354:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: ✅ הצלחה
+
+      at tests/fullOrderFlow.test.js:355:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          זמן: 24.12.2025, 1:27:00
+
+      at tests/fullOrderFlow.test.js:356:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       2. [charge] ₪749
+
+      at tests/fullOrderFlow.test.js:353:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          מזהה: 370675174
+
+      at tests/fullOrderFlow.test.js:354:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          סטטוס: ✅ הצלחה
+
+      at tests/fullOrderFlow.test.js:355:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          זמן: 24.12.2025, 1:27:03
+
+      at tests/fullOrderFlow.test.js:356:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    
+    📝 טיימליין מלא:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:362:13)
+
+  console.log
+       1. [pending] ההזמנה התקבלה
+
+      at tests/fullOrderFlow.test.js:364:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:26:58
+
+      at tests/fullOrderFlow.test.js:365:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       2. [in_progress] 🤖 עדכון אוטומטי: 1 מתוך 2 פריטים בתהליך הזמנה או משלוח
+
+      at tests/fullOrderFlow.test.js:364:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:27:00
+
+      at tests/fullOrderFlow.test.js:365:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       3. [ready_to_charge] כל הפריטים הוכרעו - מוכן לגביה
+
+      at tests/fullOrderFlow.test.js:364:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:27:01
+
+      at tests/fullOrderFlow.test.js:365:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+       4. [charged] תשלום נגבה: ₪749
+
+      at tests/fullOrderFlow.test.js:364:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+          24.12.2025, 1:27:03
+
+      at tests/fullOrderFlow.test.js:365:15
+          at Proxy.forEach (<anonymous>)
+
+  console.log
+    
+    🎉 ההזמנה הושלמה בהצלחה!
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:368:13)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:369:13)
+
+  console.log
+    סיכום:
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:370:13)
+
+  console.log
+    ✅ לקוח הזמין 2 פריטים בסך ₪700
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:371:13)
+
+  console.log
+    ✅ נעלה מסגרת אשראי של ₪749
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:372:13)
+
+  console.log
+    ✅ מנהל הזמין את הפריטים מהספק
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:373:13)
+
+  console.log
+    ✅ המערכת זיהתה אוטומטית שמוכן לגביה
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:374:13)
+
+  console.log
+    ✅ נגבו ₪749 (כולל משלוח)
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:375:13)
+
+  console.log
+    ──────────────────────────────────────────────────────────────────────
+
+      at Object.<anonymous> (tests/fullOrderFlow.test.js:376:13)
+
+  console.log
+    🟢 Hyp Pay Response: { CCode: '250', success: true, Id: '370675174' }
+
+      at sendRequest (src/utils/hypPayClient.js:76:15)
+
+  console.log
+    [ChargeJob] ✅ הזמנה DEMO-1766532418227 נגבתה בהצלחה: ₪749
+
+      at chargeOrder (src/jobs/chargeReadyOrders.js:44:15)
+
+  console.log
+    [DistributedLock] 🔓 Released lock: charge_order_694b2542dea93d5058eb404f
+
+      at releaseLock (src/utils/distributedLock.js:85:15)
+
+  console.log
+    [ChargeJob] 🔓 Released lock for order DEMO-1766532418227
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:241:17)
+
+  console.log
+    [ChargeJob] ✅ סיכום ריצה: { processed: 1, success: 1, cancelled: 0, failed: 0, skipped: 0 }
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:248:13)
+
+  console.log
+    [ChargeJob] 🔍 מחפש הזמנות מוכנות לגביה...
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:173:11)
+
+  console.log
+    [ChargeJob] 📋 נמצאו 1 הזמנות מוכנות לגביה
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:195:13)
+
+  console.log
+    [DistributedLock] ✅ Acquired lock: charge_order_694b254b25871e37e067da0d (expires in 60s)
+
+      at acquireLock (src/utils/distributedLock.js:55:13)
+
+  console.log
+    [ChargeJob] 🔒 Acquired lock for order TEST-JOB-1766532427011
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:221:17)
+
+  console.log
+    [ChargeJob] 🔄 מנסה לגבות הזמנה TEST-JOB-1766532427011...
+
+      at chargeOrder (src/jobs/chargeReadyOrders.js:24:13)
+
+  console.log
+    🔵 Hyp Pay Request: {
+      action: 'commitTrans',
+      amount: 149,
+      order: undefined,
+      postpone: undefined
+    }
+
+      at sendRequest (src/utils/hypPayClient.js:48:13)
+
+  console.log
+    🟢 Hyp Pay Response: { CCode: '250', success: true, Id: 'TEST-TRANS-1766532427011' }
+
+      at sendRequest (src/utils/hypPayClient.js:76:15)
+
+  console.log
+    [ChargeJob] ✅ הזמנה TEST-JOB-1766532427011 נגבתה בהצלחה: ₪149
+
+      at chargeOrder (src/jobs/chargeReadyOrders.js:44:15)
+
+  console.log
+    [DistributedLock] 🔓 Released lock: charge_order_694b254b25871e37e067da0d
+
+      at releaseLock (src/utils/distributedLock.js:85:15)
+
+  console.log
+    [ChargeJob] 🔓 Released lock for order TEST-JOB-1766532427011
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:241:17)
+
+  console.log
+    [ChargeJob] ✅ סיכום ריצה: { processed: 1, success: 1, cancelled: 0, failed: 0, skipped: 0 }
+
+      at chargeReadyOrders (src/jobs/chargeReadyOrders.js:248:13)
+

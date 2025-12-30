@@ -3,3 +3,12 @@ node_modules/
 .DS_Store
 logs/
 *.log
+
+# Windows reserved names
+NUL
+nul
+CON
+con
+
+# Backups
+backups/

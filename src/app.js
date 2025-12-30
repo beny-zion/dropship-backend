@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import csrf from 'csurf'; // 🔒 CSRF Protection
 
 import connectDB from './config/db.js';
 import { generalRateLimiter } from './middleware/rateLimiter.js';
@@ -24,6 +25,8 @@ import categoryRoutes from './routes/categoryRoutes.js';
 import homePageRoutes from './routes/homePageRoutes.js';
 import orderStatusRoutes from './routes/orderStatusRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 
@@ -37,8 +40,25 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet());
+
+// CORS Configuration - Support multiple allowed origins
+// ALLOWED_ORIGINS: comma-separated list (e.g., "https://example.com,https://www.example.com")
+// Falls back to FRONTEND_URL if ALLOWED_ORIGINS is not set
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [process.env.FRONTEND_URL || 'http://localhost:3000'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -50,15 +70,37 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser()); // 🍪 Parse cookies for authentication
 app.use(morgan('dev'));
 
+// 🔒 CSRF Protection Setup
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production' // HTTPS only in production
+  }
+});
+
 // 🔒 Sanitize public responses - remove sensitive data from client responses
 app.use(sanitizePublicResponse);
+
+// 🔒 CSRF Token Endpoint - Must be called before making protected requests
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({
+    success: true,
+    csrfToken: req.csrfToken()
+  });
+});
 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/admin', adminRoutes); // ⭐ Complete Admin Panel
+
+// 🔒 Protected Admin Routes - Require CSRF Token
+app.use('/api/admin', csrfProtection, adminRoutes); // ⭐ Complete Admin Panel
+
 app.use('/api/cart', cartRoutes);
-app.use('/api/orders', orderRoutes);
+
+// 🔒 Protected Order Routes - Require CSRF Token
+app.use('/api/orders', csrfProtection, orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/users/addresses', addressRoutes);
 app.use('/api/upload', uploadRoutes); // 📤 Image Upload (Cloudinary)
@@ -66,6 +108,8 @@ app.use('/api/categories', categoryRoutes); // 🏷️ Categories Management
 app.use('/api/homepage', homePageRoutes); // 🏠 Dynamic HomePage CMS
 app.use('/api/order-statuses', orderStatusRoutes); // 📋 Order Statuses Management
 app.use('/api/admin/media', mediaRoutes); // 🖼️ Media Management (Cloudinary Tracking)
+app.use('/api/settings', settingsRoutes); // ⚙️ Public Settings (shipping, etc.)
+app.use('/api/payments', paymentRoutes); // 💳 Payment Management (Hyp Pay Integration)
 
 // Health check
 app.get('/health', (req, res) => {
@@ -106,7 +150,8 @@ app.get('/', (req, res) => {
         'Rate Limiting',
         'Audit Logging',
         'Input Validation',
-        'Token Blacklist'
+        'Token Blacklist',
+        'CSRF Protection' // ✅ New!
       ],
       admin: [
         'Dashboard with Analytics',
@@ -118,6 +163,24 @@ app.get('/', (req, res) => {
       ]
     }
   });
+});
+
+// 🔒 CSRF Error Handler - Must come before 404
+app.use((err, req, res, next) => {
+  if (err.code === 'EBADCSRFTOKEN') {
+    console.warn('⚠️ CSRF token validation failed:', {
+      ip: req.ip,
+      path: req.path,
+      method: req.method
+    });
+
+    return res.status(403).json({
+      success: false,
+      message: 'Invalid CSRF token. Please refresh the page and try again.',
+      code: 'CSRF_ERROR'
+    });
+  }
+  next(err);
 });
 
 // 404 Handler
@@ -187,6 +250,88 @@ app.listen(PORT, () => {
   
   console.log('✅ Backend Week 5 Complete!\n');
   console.log('════════════════════════════════════════════════════\n');
+
+  // ✅ NEW: Start payment charging job (Phase 3)
+  startPaymentChargingJob();
 });
+
+// ✅ NEW: Payment Charging Job Scheduler
+function startPaymentChargingJob() {
+  // הרץ מיד בהפעלה (אחרי 30 שניות)
+  setTimeout(async () => {
+    console.log('[PaymentJob] 🔄 הרצה ראשונית של chargeReadyOrders...');
+    try {
+      const { chargeReadyOrders } = await import('./jobs/chargeReadyOrders.js');
+      await chargeReadyOrders();
+    } catch (error) {
+      console.error('[PaymentJob] ❌ שגיאה בהרצה ראשונית:', error.message);
+    }
+  }, 30000);
+
+  // הרץ כל 3 דקות (לצורך בדיקות)
+  const THREE_MINUTES = 3 * 60 * 1000;
+  setInterval(async () => {
+    console.log('[PaymentJob] 🔄 הרצת chargeReadyOrders...');
+    try {
+      const { chargeReadyOrders } = await import('./jobs/chargeReadyOrders.js');
+      await chargeReadyOrders();
+    } catch (error) {
+      console.error('[PaymentJob] ❌ שגיאה בהרצת Job:', error.message);
+    }
+  }, THREE_MINUTES);
+
+  console.log('💳 Payment Charging Job scheduled (every 3 minutes)');
+
+  // ✅ Cleanup Job - מחק הזמנות שפג תוקפן (כל יום ב-3AM)
+  const scheduleCleanupJob = () => {
+    const now = new Date();
+    const scheduledTime = new Date();
+
+    // קבע לשעה 3:00 בלילה
+    scheduledTime.setHours(3, 0, 0, 0);
+
+    // אם עברנו את 3AM היום, תזמן למחר
+    if (now > scheduledTime) {
+      scheduledTime.setDate(scheduledTime.getDate() + 1);
+    }
+
+    const timeUntilCleanup = scheduledTime - now;
+    const hoursUntil = Math.round(timeUntilCleanup / 1000 / 60 / 60);
+
+    console.log('🧹━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🧹 Cleanup Job Configuration:');
+    console.log(`   📅 Next run: ${scheduledTime.toLocaleString('he-IL')}`);
+    console.log(`   ⏰ Time until cleanup: ${hoursUntil} hours`);
+    console.log('🧹━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    setTimeout(async () => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 [CleanupJob] Daily cleanup started at 3AM');
+      console.log(`   Time: ${new Date().toLocaleString('he-IL')}`);
+
+      try {
+        const { cleanupExpiredOrders } = await import('./jobs/cleanupExpiredOrders.js');
+        const deleted = await cleanupExpiredOrders();
+
+        if (deleted > 0) {
+          console.log(`✅ [CleanupJob] Successfully cleaned ${deleted} expired order(s)`);
+        } else {
+          console.log('ℹ️  [CleanupJob] No expired orders found');
+        }
+      } catch (error) {
+        console.error('❌ [CleanupJob] Error during cleanup:', error.message);
+        console.error('   Stack:', error.stack);
+      }
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // תזמן את ההרצה הבאה (24 שעות מעכשיו)
+      scheduleCleanupJob();
+    }, timeUntilCleanup);
+  };
+
+  // התחל את תזמון ה-Job
+  scheduleCleanupJob();
+}
 
 export default app;

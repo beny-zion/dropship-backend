@@ -35,7 +35,13 @@ export const getProducts = async (req, res) => {
     }
 
     // בניית query
-    const query = { status: 'active' };
+    // ✅ IMPORTANT: מציג רק מוצרים פעילים וזמינים
+    // status = 'active' - מוצר מפורסם באתר (לא draft/discontinued)
+    // stock.available = true - מוצר זמין (לא אזל מהמלאי)
+    const query = {
+      status: 'active',
+      'stock.available': true
+    };
 
     // פילטר לפי קטגוריה - תמיכה ב-slug או ID
     if (category && category !== 'all') {

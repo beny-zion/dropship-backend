@@ -137,7 +137,82 @@ const productSchema = new mongoose.Schema({
       default: Date.now
     }
   },
-  
+
+  // ✅ מעקב אחר מחירים (חדש!)
+  priceTracking: {
+    lastCheckedPrice: {
+      usd: Number,
+      ils: Number,
+      checkedAt: Date,
+      checkedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    },
+    priceAlertThreshold: {
+      type: Number,
+      default: 10, // התראה על עליה מעל 10%
+      min: 0,
+      max: 100
+    },
+    priceHistory: [{
+      price: {
+        usd: Number,
+        ils: Number
+      },
+      recordedAt: {
+        type: Date,
+        default: Date.now
+      },
+      source: {
+        type: String,
+        enum: ['manual', 'order_actual_cost', 'inventory_check', 'supplier_update']
+      },
+      recordedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    }]
+  },
+
+  // ✅ מעקב אחר בדיקות זמינות (Inventory Checks) - חדש!
+  inventoryChecks: {
+    lastChecked: {
+      timestamp: Date,
+      checkedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      checkedByName: String, // cache שם המשתמש
+      result: {
+        type: String,
+        enum: ['available', 'unavailable', 'partial'] // partial = חלק מהווריאנטים זמין
+      },
+      notes: String
+    },
+    history: [{
+      timestamp: {
+        type: Date,
+        default: Date.now
+      },
+      checkedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      checkedByName: String,
+      result: {
+        type: String,
+        enum: ['available', 'unavailable', 'partial']
+      },
+      notes: String,
+      // אפשרות לשמור snapshot של סטטוס הווריאנטים
+      variantsSnapshot: [{
+        sku: String,
+        available: Boolean
+      }]
+    }]
+  },
+
   shipping: {
     freeShipping: {
       type: Boolean,
@@ -248,7 +323,14 @@ const productSchema = new mongoose.Schema({
     },
     supplierLink: {
       type: String,
-      trim: true
+      trim: true,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור ספק חייב להיות URL תקין'
+      }
     },
     barcode: String,
     weight: String
@@ -292,10 +374,35 @@ const productSchema = new mongoose.Schema({
   links: {
     amazon: {
       type: String,
-      required: false
+      required: false,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור אמזון חייב להיות URL תקין'
+      }
     },
-    affiliateUrl: String,
-    supplierUrl: String // קישור כללי לספק (לא אמזון)
+    affiliateUrl: {
+      type: String,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור affiliate חייב להיות URL תקין'
+      }
+    },
+    supplierUrl: {
+      type: String,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^https?:\/\/.+\..+/.test(v);
+        },
+        message: 'קישור ספק חייב להיות URL תקין'
+      }
+    }
   },
 
   // פרטי ספק

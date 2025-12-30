@@ -32,7 +32,8 @@ export const CACHE_KEYS = {
   PRODUCT: (id) => `product:${id}`,
   PRODUCTS_LIST: (query) => `products:${JSON.stringify(query)}`,
   CART: (userId) => `cart:${userId}`,
-  CATEGORIES: 'categories'
+  CATEGORIES: 'categories',
+  SYSTEM_SETTINGS: 'settings:system' // ⚡ SCALE FIX: Cache system settings
 };
 
 // Helper functions
