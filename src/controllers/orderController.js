@@ -32,13 +32,16 @@ export const getMyOrders = async (req, res) => {
       .sort(sortBy)
       .limit(limit * 1)
       .skip((page - 1) * limit);
-    
+
     // Get total count for pagination
     const total = await Order.countDocuments(query);
-    
+
+    // ✅ Phase 9.4: Filter sensitive data for all orders
+    const safeOrders = orders.map(order => filterSensitiveOrderData(order));
+
     res.json({
       success: true,
-      data: orders,
+      data: safeOrders,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -64,7 +67,7 @@ export const getOrderById = async (req, res) => {
       _id: req.params.id,
       user: req.user.id
     })
-      .populate('items.product', 'name_he imageUrl price asin')
+      .populate('items.product', 'name_he imageUrl price asin slug')
       .populate('shippingAddress');
 
     if (!order) {
@@ -74,11 +77,12 @@ export const getOrderById = async (req, res) => {
       });
     }
 
-    // ✅ SECURITY: Removed debug logging to prevent data exposure
+    // ✅ Phase 9.4: Filter sensitive data for customers
+    const safeOrder = filterSensitiveOrderData(order);
 
     res.json({
       success: true,
-      data: order
+      data: safeOrder
     });
   } catch (error) {
     console.error('Get order error:', error);
@@ -88,6 +92,58 @@ export const getOrderById = async (req, res) => {
     });
   }
 };
+
+/**
+ * Phase 9.4: Filter sensitive data from order for customer view
+ * Removes: payment tokens, supplier info, internal fields
+ */
+function filterSensitiveOrderData(order) {
+  const orderObj = order.toObject();
+
+  // 🔒 Filter payment data - remove tokens and internal details
+  if (orderObj.payment) {
+    delete orderObj.payment.hypToken;           // 🚨 19-digit token
+    delete orderObj.payment.hypAuthCode;        // 🚨 Auth code
+    delete orderObj.payment.hypUid;             // 🚨 UID
+    delete orderObj.payment.hypTokenExpiry;
+    delete orderObj.payment.paymentHistory;     // Internal payment history
+    delete orderObj.payment.retryCount;
+    delete orderObj.payment.nextRetryAt;
+    delete orderObj.payment.lastErrorCode;
+  }
+
+  // 🔒 Filter timeline - only customer-facing events
+  if (orderObj.timeline) {
+    orderObj.timeline = orderObj.timeline.filter(event => event.internal === false);
+  }
+
+  // 🔒 Filter items - remove supplier and internal data
+  if (orderObj.items) {
+    orderObj.items = orderObj.items.map(item => {
+      const safeItem = { ...item };
+
+      // Remove supplier information
+      delete safeItem.supplierLink;             // 🚨 Supplier purchase link
+      delete safeItem.supplierName;
+      delete safeItem.supplierOrder;            // All supplier order details
+      delete safeItem.israelTracking;           // International tracking (internal)
+
+      // Remove internal tracking and status info
+      delete safeItem.statusHistory;            // Status change history
+      delete safeItem.manualStatusOverride;     // Manual override flag
+
+      return safeItem;
+    });
+  }
+
+  // 🔒 Remove internal metadata
+  delete orderObj.computed;                     // Computed fields for admin
+  delete orderObj.notes;                        // Admin notes
+  delete orderObj.expiresAt;                    // TTL for cleanup
+  delete orderObj.__v;                          // Mongoose version
+
+  return orderObj;
+}
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -368,11 +424,12 @@ export const cancelOrder = async (req, res) => {
       order.creditHold.releasedAt = Date.now();
     }
 
-    // Add timeline entry
+    // Add timeline entry (visible to customer)
     order.timeline.push({
       status: 'cancelled',
-      message: 'ההזמנה בוטלה על ידי הלקוח',
-      timestamp: Date.now()
+      message: 'ההזמנה בוטלה',
+      timestamp: Date.now(),
+      internal: false
     });
 
     await order.save();

@@ -166,11 +166,19 @@ export const callbackSuccess = async (req, res) => {
       timestamp: new Date()
     });
 
-    // טיימליין
+    // טיימליין - visible to customer (payment confirmed)
+    order.timeline.push({
+      status: 'payment_hold',
+      message: 'התשלום אושר בהצלחה',
+      timestamp: new Date(),
+      internal: false
+    });
+    // Internal log with amount details
     order.timeline.push({
       status: 'payment_hold',
       message: `מסגרת אשראי נתפסה: ₪${callbackResult.amount}`,
-      timestamp: new Date()
+      timestamp: new Date(),
+      internal: true
     });
 
     // ✅ תשלום הצליח - הזמנה הופכת ל"אמיתית"!
@@ -254,7 +262,8 @@ export const callbackError = async (req, res) => {
         order.timeline.push({
           status: 'payment_failed',
           message: `תשלום נכשל: ${errorMessage}`,
-          timestamp: new Date()
+          timestamp: new Date(),
+          internal: true
         });
 
         await order.save();
@@ -344,11 +353,12 @@ export const holdPayment = async (req, res) => {
         timestamp: new Date()
       });
 
-      // הוסף לטיימליין
+      // הוסף לטיימליין (internal - payment details)
       order.timeline.push({
         status: 'payment_hold',
         message: `מסגרת אשראי נתפסה: ₪${result.amount}`,
-        timestamp: new Date()
+        timestamp: new Date(),
+        internal: true
       });
 
       await order.save();
@@ -433,11 +443,12 @@ export const capturePaymentManual = async (req, res) => {
         timestamp: new Date()
       });
 
-      // הוסף לטיימליין
+      // הוסף לטיימליין (internal - payment details)
       order.timeline.push({
         status: result.cancelled ? 'cancelled' : 'charged',
         message: result.message,
-        timestamp: new Date()
+        timestamp: new Date(),
+        internal: true
       });
 
       await order.save();
@@ -530,11 +541,12 @@ export const cancelPayment = async (req, res) => {
         timestamp: new Date()
       });
 
-      // הוסף לטיימליין
+      // הוסף לטיימליין (internal - payment details)
       order.timeline.push({
         status: 'payment_cancelled',
         message: result.message,
-        timestamp: new Date()
+        timestamp: new Date(),
+        internal: true
       });
 
       await order.save();

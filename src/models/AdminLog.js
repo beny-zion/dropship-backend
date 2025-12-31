@@ -61,7 +61,14 @@ const adminLogSchema = new mongoose.Schema({
       // Settings
       'VIEW_SETTINGS',
       'UPDATE_SETTINGS',
-      'RESET_SETTINGS'
+      'RESET_SETTINGS',
+      // Refunds & Charges (Phase 10)
+      'CHECK_CAN_REFUND',
+      'CALCULATE_REFUND',
+      'CREATE_REFUND',
+      'VIEW_REFUNDS',
+      'CHECK_CAN_CHARGE',
+      'MANUAL_CHARGE'
     ]
   },
 

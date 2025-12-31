@@ -85,12 +85,13 @@ export const requestItemCancellation = async (req, res) => {
       notes: `ביטול לבקשת לקוח: ${reason || 'ללא סיבה'}`
     });
 
-    // הוסף ל-timeline של ההזמנה
+    // הוסף ל-timeline של ההזמנה (visible to customer)
     order.timeline = order.timeline || [];
     order.timeline.push({
       status: 'item_cancelled',
       timestamp: new Date(),
-      message: `הפריט "${item.name}" בוטל לבקשת הלקוח`
+      message: `הפריט "${item.name}" בוטל`,
+      internal: false
     });
 
     // שמור (יפעיל pre-save hook)

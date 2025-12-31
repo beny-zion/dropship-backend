@@ -181,6 +181,86 @@ export const getOrderById = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Phase 9.3: Manual status override for order
+ * PUT /api/admin/orders/:id/manual-status
+ */
+export const manualStatusOverride = asyncHandler(async (req, res) => {
+  const { status, reason, clearOverride } = req.body;
+
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: 'הזמנה לא נמצאה'
+    });
+  }
+
+  // Clear override
+  if (clearOverride) {
+    order.manualStatusOverride = false;
+
+    order.timeline.push({
+      status: order.status,
+      message: `שחרור נעילת סטטוס ראשי להזמנה`,
+      timestamp: new Date(),
+      internal: true
+    });
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      data: {
+        order: {
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          manualOverride: false
+        }
+      },
+      message: 'נעילת הסטטוס הראשי שוחררה - האוטומציה תמשיך לפעול'
+    });
+  }
+
+  // Lock with new status
+  if (!status) {
+    return res.status(400).json({
+      success: false,
+      message: 'נא לספק סטטוס חדש'
+    });
+  }
+
+  const oldStatus = order.status;
+  order.status = status;
+  order.manualStatusOverride = true;
+
+  // Add to timeline
+  order.timeline.push({
+    status: order.status,
+    message: `עדכון סטטוס ראשי ידני: ${oldStatus} → ${status}. סיבה: ${reason || 'לא צוינה'}`,
+    timestamp: new Date(),
+    internal: true
+  });
+
+  await order.save();
+
+  res.json({
+    success: true,
+    data: {
+      order: {
+        id: order._id,
+        orderNumber: order.orderNumber,
+        previousStatus: oldStatus,
+        newStatus: status,
+        manualOverride: true
+      }
+    },
+    message: 'סטטוס ההזמנה הראשי עודכן ידנית - האוטומציה לא תדרוס שינוי זה',
+    warning: 'שים לב: עדכונים אוטומטיים לא ישפיעו על הזמנה זו עד לשחרור הנעילה'
+  });
+});
+
 // @desc    Update order status
 // @route   PUT /api/admin/orders/:id/status
 // @access  Private/Admin
@@ -212,11 +292,12 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   // Update status
   order.status = status;
 
-  // Add timeline entry
+  // Add timeline entry (admin status updates are internal by default)
   order.timeline.push({
     status,
     message: message || await getDefaultStatusMessage(status),
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    internal: true
   });
 
   // Handle credit hold
@@ -289,8 +370,9 @@ export const updateTracking = asyncHandler(async (req, res) => {
 
     order.timeline.push({
       status: 'shipped_to_customer',
-      message: `ההזמנה נשלחה ללקוח. מספר מעקב: ${trackingNumber}`,
-      timestamp: Date.now()
+      message: `ההזמנה נשלחה! מספר מעקב: ${trackingNumber}`,
+      timestamp: Date.now(),
+      internal: false
     });
   }
 
@@ -361,9 +443,19 @@ export const cancelOrder = asyncHandler(async (req, res) => {
   order.status = 'cancelled';
   order.timeline.push({
     status: 'cancelled',
-    message: reason || 'ההזמנה בוטלה על ידי המערכת',
-    timestamp: Date.now()
+    message: 'ההזמנה בוטלה',
+    timestamp: Date.now(),
+    internal: false
   });
+  // Also log the reason internally
+  if (reason) {
+    order.timeline.push({
+      status: 'cancelled',
+      message: `סיבת ביטול: ${reason}`,
+      timestamp: Date.now(),
+      internal: true
+    });
+  }
 
   await order.save();
 

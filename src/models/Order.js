@@ -68,6 +68,12 @@ const orderItemSchema = new mongoose.Schema({
     default: 'pending'
   },
 
+  // Phase 9.3: Manual status override - prevents automation from changing status
+  manualStatusOverride: {
+    type: Boolean,
+    default: false
+  },
+
   // פרטי הזמנה מספק
   supplierOrder: {
     orderedAt: Date,
@@ -240,6 +246,12 @@ const orderSchema = new mongoose.Schema({
       'arrived_israel_warehouse',   // LEGACY - maps to 'ready_to_ship'
       'shipped_to_customer'         // LEGACY - maps to 'shipped'
     ]
+  },
+
+  // Phase 9.3: Manual override for order status - prevents automation from changing
+  manualStatusOverride: {
+    type: Boolean,
+    default: false
   },
 
   // ✅ NEW: TTL - זמן תפוגה להזמנה זמנית
@@ -429,10 +441,17 @@ const orderSchema = new mongoose.Schema({
   
   notes: String,
 
-  // ✅ רישום החזרים
+  // ✅ רישום החזרים (Phase 10: Enhanced)
   refunds: [{
-    amount: Number,
-    reason: String,
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    reason: {
+      type: String,
+      required: true
+    },
     items: [{
       type: mongoose.Schema.Types.ObjectId
     }],
@@ -443,11 +462,25 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['pending', 'processed', 'failed'],
+      enum: ['pending', 'completed', 'failed'],
       default: 'pending'
     },
-    refundMethod: String,
-    transactionId: String,
+    // Hyp Pay refund details
+    hypRefundId: {
+      type: String,
+      index: true  // מזהה עסקת הזיכוי ב-Hyp Pay
+    },
+    hypACode: String,           // קוד אישור מחברת האשראי
+    invoiceNumber: String,      // מספר חשבונית זיכוי
+    hypError: String,           // שגיאה מ-Hyp Pay (אם נכשל)
+    hypErrorCode: String,       // קוד שגיאה
+    // Metadata
+    refundMethod: {
+      type: String,
+      enum: ['hyp_pay', 'zikoyAPI', 'token', 'card', 'manual', 'bank_transfer'],
+      default: 'hyp_pay'
+    },
+    notes: String,              // הערות אדמין
     createdAt: {
       type: Date,
       default: Date.now
@@ -460,6 +493,11 @@ const orderSchema = new mongoose.Schema({
     timestamp: {
       type: Date,
       default: () => new Date()
+    },
+    // Phase 9.2: internal events are hidden from customers
+    internal: {
+      type: Boolean,
+      default: false
     }
   }]
 }, {
@@ -533,7 +571,8 @@ orderSchema.pre('save', function(next) {
     this.timeline.push({
       status: 'pending',
       message: 'ההזמנה התקבלה',
-      timestamp: new Date()
+      timestamp: new Date(),
+      internal: false // Customer should see this
     });
   }
   next();
@@ -568,11 +607,12 @@ orderSchema.pre('save', function(next) {
     console.log(`[Order ${this.orderNumber}] ✅ כל הפריטים הוכרעו - מוכן לגביה (fallback hook)`);
     this.payment.status = 'ready_to_charge';
 
-    // הוסף לטיימליין
+    // הוסף לטיימליין (internal - payment status)
     this.timeline.push({
       status: 'ready_to_charge',
       message: 'כל הפריטים הוכרעו - מוכן לגביה',
-      timestamp: new Date()
+      timestamp: new Date(),
+      internal: true
     });
   }
 
@@ -662,6 +702,11 @@ orderSchema.index({
   'items.supplierName': 1,
   'items.cancellation.cancelled': 1
 });
+
+// ✅ Phase 10: Indexes for refunds
+orderSchema.index({ 'refunds.status': 1, 'refunds.createdAt': -1 });
+orderSchema.index({ 'refunds.hypRefundId': 1 }, { sparse: true });
+orderSchema.index({ 'payment.refundedAmount': 1 });
 
 // ============================================
 // ✅ COMPUTED STATUS CALCULATION FUNCTIONS

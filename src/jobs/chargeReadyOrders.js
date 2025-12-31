@@ -53,11 +53,12 @@ async function chargeOrder(order) {
       order.payment.chargedAmount = result.chargedAmount;
       order.payment.chargedAt = new Date();
 
-      // הוסף לטיימליין
+      // הוסף לטיימליין (internal - לקוח לא רואה פרטי גביה)
       order.timeline.push({
         status: 'charged',
         message: `תשלום נגבה: ₪${result.chargedAmount}`,
-        timestamp: new Date()
+        timestamp: new Date(),
+        internal: true
       });
 
       // הוסף להיסטוריה
@@ -86,7 +87,8 @@ async function chargeOrder(order) {
       order.timeline.push({
         status: 'cancelled',
         message: 'התשלום בוטל - כל הפריטים בוטלו',
-        timestamp: new Date()
+        timestamp: new Date(),
+        internal: true
       });
 
       // הוסף להיסטוריה
@@ -117,7 +119,8 @@ async function chargeOrder(order) {
         order.timeline.push({
           status: 'payment_retry_scheduled',
           message: `ניסיון ${result.retryCount}/${result.maxRetries} נכשל. ינסה שוב בקרוב`,
-          timestamp: new Date()
+          timestamp: new Date(),
+          internal: true
         });
 
         await order.save();
@@ -136,7 +139,8 @@ async function chargeOrder(order) {
         order.timeline.push({
           status: 'payment_failed',
           message: `גביה נכשלה סופית: ${result.error}`,
-          timestamp: new Date()
+          timestamp: new Date(),
+          internal: true
         });
 
         // הוסף להיסטוריה

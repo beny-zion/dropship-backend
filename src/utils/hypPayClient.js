@@ -180,7 +180,8 @@ function isSuccessCode(code, action) {
     'CancelTrans': ['0'],           // cancel
     'QueryTrans': ['0'],            // query
     'cancelOrder': ['0'],           // cancel order
-    'getToken': ['0']               // get token - 0 = טוקן נוצר בהצלחה
+    'getToken': ['0'],              // get token - 0 = טוקן נוצר בהצלחה
+    'zikoyAPI': ['0']               // refund - 0 = זיכוי בוצע בהצלחה
   };
 
   const validCodes = actionSpecificCodes[action] || generalSuccessCodes;
@@ -208,8 +209,10 @@ function getErrorMessage(result) {
     '5': 'כרטיס מזויף',
     '6': 'תקלה בתקשורת',
     '7': 'CVV שגוי',
+    '16': 'לא ניתן לבצע עסקה שלילית/זיכוי - יש לפנות לתמיכה',
     '33': 'כרטיס לא תקין',
     '36': 'תוקף כרטיס פג',
+    '401': 'פרטי כרטיס שגויים או תוקף פג',
     '39': 'שגיאה בפרטי הכרטיס',
     '51': 'אין כיסוי',
     '54': 'תוקף הכרטיס פג',
@@ -269,13 +272,278 @@ function validateCardDetails(cardDetails) {
   };
 }
 
+/**
+ * ביצוע החזר כספי (Refund) לעסקה קיימת
+ *
+ * @param {String} transactionId - מזהה העסקה המקורית (hypTransactionId)
+ * @param {Number} amount - סכום ההחזר בש"ח
+ * @param {Object} options - אפשרויות נוספות
+ * @param {String} options.orderId - מזהה ההזמנה (לתיעוד)
+ * @param {String} options.reason - סיבת ההחזר
+ * @returns {Promise<Object>} תוצאת ההחזר
+ */
+async function refundPayment(transactionId, amount, options = {}) {
+  const config = getConfig();
+
+  // ✅ Mock Mode - דלג על Hyp Pay API
+  if (config.HYP_MOCK_MODE) {
+    console.log('🟡 MOCK MODE: Simulating Hyp Pay Refund');
+    console.log('   TransactionId:', transactionId);
+    console.log('   Amount:', amount);
+    console.log('   Reason:', options.reason);
+
+    // סימולציה של תשובת זיכוי
+    const mockRefundId = `REFUND-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    return {
+      success: true,
+      refundId: mockRefundId,
+      originalTransactionId: transactionId,
+      amount: amount,
+      CCode: '0',
+      ACode: '0012345'
+    };
+  }
+
+  // ולידציה
+  if (!transactionId) {
+    throw new Error('Transaction ID is required for refund');
+  }
+
+  if (!amount || amount <= 0) {
+    throw new Error('Refund amount must be greater than 0');
+  }
+
+  // שליחת בקשת זיכוי ל-Hyp Pay
+  // action=zikoyAPI - Refund by Transaction ID
+  const params = {
+    action: 'zikoyAPI',
+    TransId: transactionId,
+    Amount: amount,
+    UTF8: 'True',
+    UTF8out: 'True'
+  };
+
+  try {
+    const result = await sendRequest(params);
+
+    if (isSuccessCode(result.CCode, 'zikoyAPI')) {
+      console.log(`✅ Refund successful: ${result.Id} (₪${amount})`);
+
+      return {
+        success: true,
+        refundId: result.Id,
+        originalTransactionId: transactionId,
+        amount: amount,
+        CCode: result.CCode,
+        ACode: result.ACode,
+        invoiceNumber: result.HeshASM || result.Hesh
+      };
+    } else {
+      const errorMessage = getErrorMessage(result);
+      console.error(`❌ Refund failed: ${errorMessage}`);
+
+      return {
+        success: false,
+        error: errorMessage,
+        errorCode: result.CCode,
+        originalTransactionId: transactionId,
+        amount: amount
+      };
+    }
+
+  } catch (error) {
+    console.error('❌ Refund request error:', error.message);
+    throw new Error(`Refund request failed: ${error.message}`);
+  }
+}
+
+/**
+ * ביצוע זיכוי מבוסס טוקן (Token-based Credit)
+ * משמש כאשר ה-zikoyAPI נכשל או לא זמין
+ *
+ * @param {Object} tokenData - פרטי הטוקן
+ * @param {String} tokenData.token - הטוקן
+ * @param {String} tokenData.tokenExpiry - תוקף הטוקן (YYMM)
+ * @param {Number} amount - סכום הזיכוי (חיובי - יומר לשלילי)
+ * @param {Object} options - אפשרויות נוספות
+ * @returns {Promise<Object>} תוצאת הזיכוי
+ */
+async function refundWithToken(tokenData, amount, options = {}) {
+  const config = getConfig();
+
+  // ✅ Mock Mode
+  if (config.HYP_MOCK_MODE) {
+    console.log('🟡 MOCK MODE: Simulating Token-based Refund');
+    console.log('   Token:', tokenData.token ? `****${tokenData.token.slice(-4)}` : 'N/A');
+    console.log('   Amount:', amount);
+
+    const mockRefundId = `TOKEN-REFUND-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    return {
+      success: true,
+      refundId: mockRefundId,
+      amount: amount,
+      CCode: '0',
+      ACode: '0012345',
+      method: 'token'
+    };
+  }
+
+  // ולידציה
+  if (!tokenData?.token || !tokenData?.tokenExpiry) {
+    return {
+      success: false,
+      error: 'פרטי טוקן חסרים',
+      errorCode: 'MISSING_TOKEN'
+    };
+  }
+
+  if (!amount || amount <= 0) {
+    return {
+      success: false,
+      error: 'סכום הזיכוי חייב להיות גדול מ-0',
+      errorCode: 'INVALID_AMOUNT'
+    };
+  }
+
+  // פירוק התוקף
+  const tYear = tokenData.tokenExpiry.substring(0, 2);
+  const tMonth = tokenData.tokenExpiry.substring(2, 4);
+
+  // זיכוי = סכום שלילי
+  const params = {
+    action: 'soft',
+    Amount: -Math.abs(amount),  // ✅ סכום שלילי = זיכוי
+    CC: tokenData.token,
+    Tmonth: tMonth,
+    Tyear: tYear,
+    Token: 'True',
+    Coin: '1',
+    Order: options.orderNumber || '',
+    Info: options.reason || 'זיכוי'
+  };
+
+  try {
+    console.log(`[RefundWithToken] Attempting token-based refund: ₪${amount}`);
+
+    const result = await sendRequest(params);
+
+    // סכום שלילי מחזיר CCode=0 בהצלחה
+    if (result.CCode === '0') {
+      console.log(`✅ Token-based refund successful: ${result.Id} (₪${amount})`);
+
+      return {
+        success: true,
+        refundId: result.Id,
+        amount: amount,
+        CCode: result.CCode,
+        ACode: result.ACode,
+        invoiceNumber: result.HeshASM || result.Hesh,
+        method: 'token'
+      };
+    } else {
+      const errorMessage = getErrorMessage(result);
+      console.error(`❌ Token-based refund failed: ${errorMessage}`);
+
+      return {
+        success: false,
+        error: errorMessage,
+        errorCode: result.CCode,
+        method: 'token'
+      };
+    }
+
+  } catch (error) {
+    console.error('❌ Token refund request error:', error.message);
+    return {
+      success: false,
+      error: `תקלה בביצוע הזיכוי: ${error.message}`,
+      errorCode: 'NETWORK_ERROR',
+      method: 'token'
+    };
+  }
+}
+
+/**
+ * ביטול עסקה (Cancel) - רק באותו יום עד 23:20
+ *
+ * @param {String} transactionId - מזהה העסקה לביטול
+ * @returns {Promise<Object>} תוצאת הביטול
+ */
+async function cancelTransaction(transactionId) {
+  const config = getConfig();
+
+  // ✅ Mock Mode
+  if (config.HYP_MOCK_MODE) {
+    console.log('🟡 MOCK MODE: Simulating Cancel Transaction');
+    console.log('   TransactionId:', transactionId);
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    return {
+      success: true,
+      transactionId: transactionId,
+      CCode: '0'
+    };
+  }
+
+  if (!transactionId) {
+    throw new Error('Transaction ID is required for cancellation');
+  }
+
+  const params = {
+    action: 'CancelTrans',
+    TransId: transactionId
+  };
+
+  try {
+    const result = await sendRequest(params);
+
+    if (result.CCode === '0') {
+      console.log(`✅ Transaction cancelled: ${transactionId}`);
+
+      return {
+        success: true,
+        transactionId: transactionId,
+        CCode: result.CCode,
+        invoiceNumber: result.Hesh
+      };
+    } else {
+      const errorMessage = result.CCode === '920'
+        ? 'העסקה לא קיימת או כבר בוצעה'
+        : getErrorMessage(result);
+
+      console.error(`❌ Cancel failed: ${errorMessage}`);
+
+      return {
+        success: false,
+        error: errorMessage,
+        errorCode: result.CCode,
+        transactionId: transactionId
+      };
+    }
+
+  } catch (error) {
+    console.error('❌ Cancel request error:', error.message);
+    throw new Error(`Cancel request failed: ${error.message}`);
+  }
+}
+
 export {
   sendRequest,
   parseHypResponse,
   isSuccessCode,
   getErrorMessage,
   validateCardDetails,
-  getConfig
+  getConfig,
+  refundPayment,
+  refundWithToken,
+  cancelTransaction
 };
 
 export default {
@@ -284,5 +552,8 @@ export default {
   isSuccessCode,
   getErrorMessage,
   validateCardDetails,
-  getConfig
+  getConfig,
+  refundPayment,
+  refundWithToken,
+  cancelTransaction
 };

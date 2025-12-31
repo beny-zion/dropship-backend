@@ -140,6 +140,11 @@ export function shouldUpdateOrderStatus(order) {
     return null;
   }
 
+  // Phase 9.3: Check if ORDER has manual override - don't auto-update if locked
+  if (order.manualStatusOverride === true) {
+    return null;
+  }
+
   return {
     shouldUpdate: true,
     from: currentStatus,
@@ -165,12 +170,13 @@ export function applyAutoStatusUpdate(order) {
   // עדכן את הסטטוס
   order.status = update.to;
 
-  // הוסף ל-timeline
+  // הוסף ל-timeline (internal - automated updates)
   order.timeline.push({
     status: update.to,
     message: `🤖 עדכון אוטומטי: ${update.reason}`,
     timestamp: new Date(),
-    automated: true
+    automated: true,
+    internal: true
   });
 }
 

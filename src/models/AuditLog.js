@@ -58,7 +58,15 @@ const auditLogSchema = new mongoose.Schema({
       // Settings actions
       'VIEW_SETTINGS',
       'UPDATE_SETTINGS',
-      'RESET_SETTINGS'
+      'RESET_SETTINGS',
+
+      // Refund & Charge actions (Phase 10)
+      'CHECK_CAN_REFUND',
+      'CALCULATE_REFUND',
+      'CREATE_REFUND',
+      'VIEW_REFUNDS',
+      'CHECK_CAN_CHARGE',
+      'MANUAL_CHARGE'
     ],
     index: true
   },
@@ -66,7 +74,7 @@ const auditLogSchema = new mongoose.Schema({
   // יעד הפעולה
   targetType: {
     type: String,
-    enum: ['Order', 'OrderItem', 'User', 'Product', 'System', 'SystemSettings'],
+    enum: ['Order', 'OrderItem', 'User', 'Product', 'System', 'SystemSettings', 'Refund', 'Payment'],
     index: true
   },
   targetId: {

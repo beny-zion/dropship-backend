@@ -73,6 +73,11 @@ export const updateItemStatus = async (req, res) => {
       });
     }
 
+    // Phase 9.3: Warn if item has manual override (but allow update)
+    if (item.manualStatusOverride) {
+      console.log(`[ItemStatus] Warning: Item ${itemId} has manual override flag. Updating via regular endpoint.`);
+    }
+
     // בדוק תקינות מעבר סטטוס
     if (!isValidStatusTransition(item.itemStatus, newStatus)) {
       await session.abortTransaction();
@@ -1018,11 +1023,12 @@ export const updateIsraelTracking = async (req, res) => {
       notes: `מעקב בינלאומי נוסף: ${trackingNumber} (${carrier})`
     });
 
-    // Add to order timeline
+    // Add to order timeline (internal - admin action)
     order.timeline.push({
       status: order.status,
       message: `מעקב בינלאומי נוסף לפריט "${item.name}": ${trackingNumber}`,
-      timestamp: new Date()
+      timestamp: new Date(),
+      internal: true
     });
 
     await order.save();
@@ -1119,11 +1125,12 @@ export const updateCustomerTracking = async (req, res) => {
       });
     }
 
-    // Add to order timeline
+    // Add to order timeline - this one is visible to customer (tracking info)
     order.timeline.push({
       status: order.status,
-      message: `מעקב משלוח ללקוח נוסף לפריט "${item.name}": ${trackingNumber}`,
-      timestamp: new Date()
+      message: `מספר מעקב משלוח נוסף: ${trackingNumber}`,
+      timestamp: new Date(),
+      internal: false
     });
 
     await order.save();
@@ -1146,6 +1153,119 @@ export const updateCustomerTracking = async (req, res) => {
   }
 };
 
+/**
+ * עדכון סטטוס פריט ידנית (Manual Override)
+ * PUT /api/admin/orders/:orderId/items/:itemId/manual-status
+ *
+ * Phase 9.3: מאפשר לאדמין לעדכן סטטוס ידנית ומונע מהאוטומציה לדרוס את השינוי
+ */
+export const manualStatusUpdate = async (req, res) => {
+  try {
+    const { orderId, itemId } = req.params;
+    const { status, reason, clearOverride } = req.body;
+
+    // Validation
+    if (!status && !clearOverride) {
+      return res.status(400).json({
+        success: false,
+        message: 'נא לספק סטטוס חדש'
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'הזמנה לא נמצאה'
+      });
+    }
+
+    const item = order.items.id(itemId);
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'פריט לא נמצא'
+      });
+    }
+
+    // If clearing override
+    if (clearOverride) {
+      item.manualStatusOverride = false;
+
+      order.timeline.push({
+        status: order.status,
+        message: `שחרור נעילת סטטוס ידנית לפריט "${item.name}"`,
+        timestamp: new Date(),
+        internal: true
+      });
+
+      await order.save();
+
+      return res.json({
+        success: true,
+        data: {
+          item: {
+            id: item._id,
+            name: item.name,
+            status: item.itemStatus,
+            manualOverride: false
+          }
+        },
+        message: 'נעילת הסטטוס הידנית שוחררה - האוטומציה תמשיך לפעול'
+      });
+    }
+
+    // Save old status for history
+    const oldStatus = item.itemStatus;
+
+    // Update status
+    item.itemStatus = status;
+    item.manualStatusOverride = true;
+
+    // Add to item status history
+    item.statusHistory = item.statusHistory || [];
+    item.statusHistory.push({
+      status: oldStatus,
+      changedAt: new Date(),
+      changedBy: req.user?.id,
+      notes: `Manual override: ${oldStatus} → ${status}. סיבה: ${reason || 'לא צוינה'}`
+    });
+
+    // Add to order timeline (internal)
+    order.timeline.push({
+      status: order.status,
+      message: `עדכון סטטוס ידני לפריט "${item.name}": ${status}`,
+      timestamp: new Date(),
+      internal: true
+    });
+
+    await order.save();
+
+    res.json({
+      success: true,
+      data: {
+        item: {
+          id: item._id,
+          name: item.name,
+          previousStatus: oldStatus,
+          newStatus: status,
+          manualOverride: true
+        }
+      },
+      message: 'סטטוס הפריט עודכן ידנית - האוטומציה לא תדרוס שינוי זה',
+      warning: 'שים לב: עדכונים אוטומטיים לא ישפיעו על פריט זה עד לשחרור הנעילה'
+    });
+
+  } catch (error) {
+    console.error('Error in manual status update:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בעדכון סטטוס ידני',
+      error: error.message
+    });
+  }
+};
+
 export default {
   updateItemStatus,
   orderFromSupplier,
@@ -1154,5 +1274,6 @@ export default {
   bulkUpdateItems,
   bulkOrderFromSupplier,
   updateIsraelTracking,
-  updateCustomerTracking
+  updateCustomerTracking,
+  manualStatusUpdate
 };

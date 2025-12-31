@@ -20,6 +20,8 @@ import * as adminOrderItemsController from '../controllers/adminOrderItemsContro
 import * as adminSettingsController from '../controllers/adminSettingsController.js';
 // ✅ NEW: Import product availability controller
 import * as productAvailabilityController from '../controllers/productAvailabilityController.js';
+// ✅ Phase 10: Import refund controller
+import * as refundController from '../controllers/refundController.js';
 
 // Import validators
 import {
@@ -311,6 +313,16 @@ router.put(
   adminOrdersController.updateOrderStatus
 );
 
+// @route   PUT /api/admin/orders/:id/manual-status
+// Phase 9.3: Manual status override for order
+router.put(
+  '/orders/:id/manual-status',
+  validateMongoId,
+  requireAdminOrManager,
+  auditLog('MANUAL_STATUS_OVERRIDE_ORDER', 'Order'),
+  adminOrdersController.manualStatusOverride
+);
+
 // @route   PUT /api/admin/orders/:id/tracking
 router.put(
   '/orders/:id/tracking',
@@ -427,6 +439,17 @@ router.put(
   adminOrderItemsController.updateCustomerTracking
 );
 
+// @route   PUT /api/admin/orders/:orderId/items/:itemId/manual-status
+// Phase 9.3: Manual status override - prevents automation from changing status
+router.put(
+  '/orders/:orderId/items/:itemId/manual-status',
+  validateMongoId,
+  requireAdminOrManager,
+  checkOrderAccess('edit'),
+  auditLog('MANUAL_STATUS_UPDATE', 'OrderItem'),
+  adminOrderItemsController.manualStatusUpdate
+);
+
 // ============================================
 // SYSTEM SETTINGS ROUTES (NEW)
 // ============================================
@@ -458,6 +481,85 @@ router.post(
   requireAdminOrManager,
   logAdminAction('RESET_SETTINGS', 'SystemSettings'),
   adminSettingsController.resetSystemSettings
+);
+
+// ============================================
+// REFUNDS MANAGEMENT ROUTES (Phase 10)
+// ============================================
+
+// @route   GET /api/admin/refunds
+// @desc    קבלת כל ההחזרים (דשבורד)
+router.get(
+  '/refunds',
+  logAdminAction('VIEW_ALL_REFUNDS', 'Refund'),
+  refundController.getRefunds
+);
+
+// @route   GET /api/admin/refunds/stats
+// @desc    סטטיסטיקות החזרים
+router.get(
+  '/refunds/stats',
+  logAdminAction('VIEW_REFUND_STATS', 'Refund'),
+  refundController.getStats
+);
+
+// @route   POST /api/admin/refunds
+// @desc    ביצוע החזר כספי
+router.post(
+  '/refunds',
+  requireAdminOrManager,
+  auditLog('CREATE_REFUND', 'Refund'),
+  refundController.createRefund
+);
+
+// @route   GET /api/admin/orders/:orderId/refunds
+// @desc    קבלת החזרים של הזמנה ספציפית
+router.get(
+  '/orders/:orderId/refunds',
+  validateMongoId,
+  logAdminAction('VIEW_ORDER_REFUNDS', 'Refund'),
+  refundController.getOrderRefundsHandler
+);
+
+// @route   GET /api/admin/orders/:orderId/can-refund
+// @desc    בדיקת יכולת החזר להזמנה
+router.get(
+  '/orders/:orderId/can-refund',
+  validateMongoId,
+  logAdminAction('CHECK_CAN_REFUND', 'Refund'),
+  refundController.checkCanRefund
+);
+
+// @route   POST /api/admin/orders/:orderId/calculate-refund
+// @desc    חישוב סכום החזר (preview)
+router.post(
+  '/orders/:orderId/calculate-refund',
+  validateMongoId,
+  logAdminAction('CALCULATE_REFUND', 'Refund'),
+  refundController.calculateRefund
+);
+
+// ============================================
+// MANUAL CHARGE ROUTES (Phase 10)
+// ============================================
+
+// @route   GET /api/admin/orders/:orderId/can-charge
+// @desc    בדיקת יכולת גביה להזמנה
+router.get(
+  '/orders/:orderId/can-charge',
+  validateMongoId,
+  logAdminAction('CHECK_CAN_CHARGE', 'Payment'),
+  refundController.checkCanCharge
+);
+
+// @route   POST /api/admin/orders/:orderId/manual-charge
+// @desc    גביה ידנית מיידית
+router.post(
+  '/orders/:orderId/manual-charge',
+  validateMongoId,
+  requireAdminOrManager,
+  auditLog('MANUAL_CHARGE', 'Payment'),
+  refundController.manualCharge
 );
 
 // ============================================
