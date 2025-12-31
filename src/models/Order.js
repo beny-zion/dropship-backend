@@ -441,10 +441,17 @@ const orderSchema = new mongoose.Schema({
   
   notes: String,
 
-  // ✅ רישום החזרים
+  // ✅ רישום החזרים (Phase 10: Enhanced)
   refunds: [{
-    amount: Number,
-    reason: String,
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    reason: {
+      type: String,
+      required: true
+    },
     items: [{
       type: mongoose.Schema.Types.ObjectId
     }],
@@ -455,11 +462,25 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['pending', 'processed', 'failed'],
+      enum: ['pending', 'completed', 'failed'],
       default: 'pending'
     },
-    refundMethod: String,
-    transactionId: String,
+    // Hyp Pay refund details
+    hypRefundId: {
+      type: String,
+      index: true  // מזהה עסקת הזיכוי ב-Hyp Pay
+    },
+    hypACode: String,           // קוד אישור מחברת האשראי
+    invoiceNumber: String,      // מספר חשבונית זיכוי
+    hypError: String,           // שגיאה מ-Hyp Pay (אם נכשל)
+    hypErrorCode: String,       // קוד שגיאה
+    // Metadata
+    refundMethod: {
+      type: String,
+      enum: ['hyp_pay', 'zikoyAPI', 'token', 'card', 'manual', 'bank_transfer'],
+      default: 'hyp_pay'
+    },
+    notes: String,              // הערות אדמין
     createdAt: {
       type: Date,
       default: Date.now
@@ -681,6 +702,11 @@ orderSchema.index({
   'items.supplierName': 1,
   'items.cancellation.cancelled': 1
 });
+
+// ✅ Phase 10: Indexes for refunds
+orderSchema.index({ 'refunds.status': 1, 'refunds.createdAt': -1 });
+orderSchema.index({ 'refunds.hypRefundId': 1 }, { sparse: true });
+orderSchema.index({ 'payment.refundedAmount': 1 });
 
 // ============================================
 // ✅ COMPUTED STATUS CALCULATION FUNCTIONS
