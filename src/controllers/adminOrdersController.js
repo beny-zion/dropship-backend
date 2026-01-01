@@ -527,77 +527,110 @@ export const getOrderStats = asyncHandler(async (req, res) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [
-    todayOrders,
-    pendingOrders,
-    paymentHoldOrders,
-    orderedOrders,
-    arrivedUSOrders,
-    shippedToIsraelOrders,
-    customsOrders,
-    arrivedIsraelOrders,
-    shippedToCustomerOrders,
-    deliveredOrders,
-    statusBreakdown
-  ] = await Promise.all([
-    // Today's orders
-    Order.countDocuments({ createdAt: { $gte: today } }),
+  // Use aggregation for better performance and computed fields
+  const stats = await Order.aggregate([
+    {
+      $facet: {
+        // Today's orders
+        todayOrders: [
+          { $match: { createdAt: { $gte: today } } },
+          { $count: 'count' }
+        ],
 
-    // Pending orders
-    Order.countDocuments({ status: 'pending' }),
+        // By status (legacy field)
+        pending: [
+          { $match: { status: 'pending' } },
+          { $count: 'count' }
+        ],
+        payment_hold: [
+          { $match: { status: 'payment_hold' } },
+          { $count: 'count' }
+        ],
+        ordered: [
+          { $match: { status: 'ordered' } },
+          { $count: 'count' }
+        ],
+        arrived_us_warehouse: [
+          { $match: { status: 'arrived_us_warehouse' } },
+          { $count: 'count' }
+        ],
+        shipped_to_israel: [
+          { $match: { status: 'shipped_to_israel' } },
+          { $count: 'count' }
+        ],
+        customs_israel: [
+          { $match: { status: 'customs_israel' } },
+          { $count: 'count' }
+        ],
+        arrived_israel_warehouse: [
+          { $match: { status: 'arrived_israel_warehouse' } },
+          { $count: 'count' }
+        ],
+        shipped_to_customer: [
+          { $match: { status: 'shipped_to_customer' } },
+          { $count: 'count' }
+        ],
+        delivered: [
+          { $match: { status: 'delivered' } },
+          { $count: 'count' }
+        ],
 
-    // Payment hold orders
-    Order.countDocuments({ status: 'payment_hold' }),
+        // By computed overallProgress (more accurate)
+        byOverallProgress: [
+          {
+            $group: {
+              _id: '$computed.overallProgress',
+              count: { $sum: 1 }
+            }
+          }
+        ],
 
-    // Ordered from US
-    Order.countDocuments({ status: 'ordered' }),
-
-    // Arrived at US warehouse
-    Order.countDocuments({ status: 'arrived_us_warehouse' }),
-
-    // Shipped to Israel
-    Order.countDocuments({ status: 'shipped_to_israel' }),
-
-    // At customs
-    Order.countDocuments({ status: 'customs_israel' }),
-
-    // Arrived at Israel warehouse
-    Order.countDocuments({ status: 'arrived_israel_warehouse' }),
-
-    // Shipped to customer
-    Order.countDocuments({ status: 'shipped_to_customer' }),
-
-    // Delivered
-    Order.countDocuments({ status: 'delivered' }),
-
-    // Status breakdown
-    Order.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
+        // By payment status
+        byPaymentStatus: [
+          {
+            $group: {
+              _id: '$payment.status',
+              count: { $sum: 1 }
+            }
+          }
+        ]
       }
-    ])
+    }
   ]);
+
+  const result = stats[0];
+
+  // Build breakdown from computed.overallProgress
+  const breakdown = result.byOverallProgress.reduce((acc, item) => {
+    if (item._id) {
+      acc[item._id] = item.count;
+    }
+    return acc;
+  }, {});
+
+  // Build payment status breakdown
+  const byPaymentStatus = result.byPaymentStatus.reduce((acc, item) => {
+    if (item._id) {
+      acc[item._id] = item.count;
+    }
+    return acc;
+  }, {});
 
   res.json({
     success: true,
     data: {
-      today: todayOrders,
-      pending: pendingOrders,
-      payment_hold: paymentHoldOrders,
-      ordered: orderedOrders,
-      arrived_us_warehouse: arrivedUSOrders,
-      shipped_to_israel: shippedToIsraelOrders,
-      customs_israel: customsOrders,
-      arrived_israel_warehouse: arrivedIsraelOrders,
-      shipped_to_customer: shippedToCustomerOrders,
-      delivered: deliveredOrders,
-      breakdown: statusBreakdown.reduce((acc, item) => {
-        acc[item._id] = item.count;
-        return acc;
-      }, {})
+      today: result.todayOrders[0]?.count || 0,
+      pending: result.pending[0]?.count || 0,
+      payment_hold: result.payment_hold[0]?.count || 0,
+      ordered: result.ordered[0]?.count || 0,
+      arrived_us_warehouse: result.arrived_us_warehouse[0]?.count || 0,
+      shipped_to_israel: result.shipped_to_israel[0]?.count || 0,
+      customs_israel: result.customs_israel[0]?.count || 0,
+      arrived_israel_warehouse: result.arrived_israel_warehouse[0]?.count || 0,
+      shipped_to_customer: result.shipped_to_customer[0]?.count || 0,
+      delivered: result.delivered[0]?.count || 0,
+      breakdown,
+      byPaymentStatus
     }
   });
 });
@@ -823,6 +856,49 @@ export const getOrdersKPIs = asyncHandler(async (req, res) => {
               total: { $sum: '$pricing.adjustedTotal' }
             }
           }
+        ],
+
+        // ממתין לתשלום - מוכן לגבייה
+        pendingPayment: [
+          {
+            $match: {
+              'payment.status': { $in: ['pending', 'hold', 'ready_to_charge', 'retry_pending'] },
+              'computed.overallProgress': { $nin: ['cancelled'] }
+            }
+          },
+          { $count: 'count' }
+        ],
+
+        // סכום ממתין לגבייה
+        pendingPaymentAmount: [
+          {
+            $match: {
+              'payment.status': { $in: ['pending', 'hold', 'ready_to_charge', 'retry_pending'] },
+              'computed.overallProgress': { $nin: ['cancelled'] }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: { $ifNull: ['$pricing.adjustedTotal', '$pricing.total'] } }
+            }
+          }
+        ],
+
+        // הכנסות החודש (הזמנות שנגבו)
+        revenueThisMonth: [
+          {
+            $match: {
+              'payment.status': 'charged',
+              'payment.chargedAt': { $gte: new Date(today.getFullYear(), today.getMonth(), 1) }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: { $ifNull: ['$payment.chargedAmount', '$pricing.adjustedTotal'] } }
+            }
+          }
         ]
       }
     }
@@ -837,9 +913,12 @@ export const getOrdersKPIs = asyncHandler(async (req, res) => {
       urgentToday: result.urgentToday[0]?.count || 0,
       inTransit: result.inTransit[0]?.count || 0,
       stuck: result.stuck[0]?.count || 0,
-      stuckAvgDays: 8, // ניתן לחשב בצורה מדויקת יותר במידת הצורך
+      stuckAvgDays: 8,
       completedToday: result.completedToday[0]?.count || 0,
-      revenueToday: result.revenueToday[0]?.total || 0
+      revenueToday: result.revenueToday[0]?.total || 0,
+      pendingPayment: result.pendingPayment[0]?.count || 0,
+      pendingPaymentAmount: result.pendingPaymentAmount[0]?.total || 0,
+      revenueThisMonth: result.revenueThisMonth[0]?.total || 0
     }
   });
 });
@@ -936,6 +1015,31 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
       };
       break;
 
+    case 'in_transit':
+      // במשלוח
+      filterCondition = {
+        'items.itemStatus': 'in_transit',
+        'items.cancellation.cancelled': { $ne: true },
+        'computed.overallProgress': { $nin: ['cancelled', 'completed'] }
+      };
+      break;
+
+    case 'pending_payment':
+      // ממתין לתשלום
+      filterCondition = {
+        'payment.status': { $in: ['pending', 'ready', 'retry_pending'] },
+        'computed.overallProgress': { $nin: ['cancelled'] }
+      };
+      break;
+
+    case 'completed_today':
+      // הושלמו היום
+      filterCondition = {
+        'computed.overallProgress': 'completed',
+        updatedAt: { $gte: today }
+      };
+      break;
+
     case 'all':
     default:
       // הכל - רק לא מבוטלות
@@ -945,28 +1049,54 @@ export const getOrdersFiltered = asyncHandler(async (req, res) => {
       break;
   }
 
-  // ✅ Combine search and filter conditions
-  let matchStage = {};
+  // ✅ Phase 11: Advanced Filters
+  let advancedConditions = [];
 
-  if (searchCondition) {
-    // אם יש חיפוש - שלב עם הפילטר
-    matchStage = {
-      $and: [
-        searchCondition,
-        filterCondition
-      ]
-    };
-  } else {
-    // אם אין חיפוש - רק הפילטר
-    matchStage = filterCondition;
+  // Payment Status Filter
+  if (req.query.paymentStatus && req.query.paymentStatus !== 'all') {
+    advancedConditions.push({
+      'payment.status': req.query.paymentStatus
+    });
   }
 
-  // 🐛 DEBUG: Log query for debugging
-  if (req.query.search) {
-    console.log('🔍 Search Query:', {
-      searchTerm: req.query.search,
-      matchStage: JSON.stringify(matchStage, null, 2)
+  // Item Status Filter
+  if (req.query.itemStatus && req.query.itemStatus !== 'all') {
+    advancedConditions.push({
+      'items.itemStatus': req.query.itemStatus,
+      'items.cancellation.cancelled': { $ne: true }
     });
+  }
+
+  // Date Range Filter
+  if (req.query.dateFrom || req.query.dateTo) {
+    const dateCondition = {};
+    if (req.query.dateFrom) {
+      dateCondition.$gte = new Date(req.query.dateFrom);
+    }
+    if (req.query.dateTo) {
+      const dateTo = new Date(req.query.dateTo);
+      dateTo.setHours(23, 59, 59, 999);
+      dateCondition.$lte = dateTo;
+    }
+    advancedConditions.push({ createdAt: dateCondition });
+  }
+
+  // ✅ Combine search, filter, and advanced conditions
+  let matchStage = {};
+  let allConditions = [filterCondition];
+
+  if (searchCondition) {
+    allConditions.push(searchCondition);
+  }
+
+  if (advancedConditions.length > 0) {
+    allConditions = allConditions.concat(advancedConditions);
+  }
+
+  if (allConditions.length > 1) {
+    matchStage = { $and: allConditions };
+  } else {
+    matchStage = filterCondition;
   }
 
   const orders = await Order.find(matchStage)
@@ -1094,6 +1224,88 @@ export const getItemsGroupedBySupplier = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Phase 11: Bulk update order items status
+// @route   POST /api/admin/orders/bulk-update-status
+// @access  Private/Admin
+export const bulkUpdateOrderStatus = asyncHandler(async (req, res) => {
+  const { orderIds, status } = req.body;
+
+  if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'יש לספק רשימת הזמנות'
+    });
+  }
+
+  if (!status) {
+    return res.status(400).json({
+      success: false,
+      message: 'יש לספק סטטוס חדש'
+    });
+  }
+
+  const validStatuses = ['pending', 'ordered', 'shipped', 'in_transit', 'delivered'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: 'סטטוס לא תקין'
+    });
+  }
+
+  // Map status to itemStatus
+  const itemStatusMap = {
+    'ordered': 'ordered',
+    'shipped': 'shipped',
+    'in_transit': 'in_transit',
+    'delivered': 'delivered'
+  };
+
+  const itemStatus = itemStatusMap[status] || status;
+
+  let updated = 0;
+  let errors = [];
+
+  for (const orderId of orderIds) {
+    try {
+      const order = await Order.findById(orderId);
+
+      if (!order) {
+        errors.push({ orderId, error: 'הזמנה לא נמצאה' });
+        continue;
+      }
+
+      // Update all non-cancelled items
+      let itemsUpdated = 0;
+      for (const item of order.items) {
+        if (!item.cancellation?.cancelled) {
+          item.itemStatus = itemStatus;
+          itemsUpdated++;
+        }
+      }
+
+      // Add timeline entry
+      order.timeline.push({
+        status: `bulk_update_${status}`,
+        message: `עדכון גורף: ${itemsUpdated} פריטים עודכנו ל-${status}`,
+        timestamp: new Date(),
+        internal: true
+      });
+
+      await order.save();
+      updated++;
+    } catch (error) {
+      errors.push({ orderId, error: error.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    message: `${updated} הזמנות עודכנו בהצלחה`,
+    updated,
+    errors: errors.length > 0 ? errors : undefined
+  });
+});
+
 export default {
   getAllOrders,
   getOrderById,
@@ -1108,5 +1320,6 @@ export default {
   refreshOrderItems,
   getOrdersKPIs,
   getOrdersFiltered,
-  getItemsGroupedBySupplier
+  getItemsGroupedBySupplier,
+  bulkUpdateOrderStatus
 };
