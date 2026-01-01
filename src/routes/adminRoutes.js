@@ -255,6 +255,14 @@ router.get(
   adminOrdersController.getOrdersFiltered
 );
 
+// @route   POST /api/admin/orders/bulk-update-status
+// @desc    Phase 11: Bulk update order items status
+router.post(
+  '/orders/bulk-update-status',
+  logAdminAction('BULK_UPDATE_STATUS', 'Order'),
+  adminOrdersController.bulkUpdateOrderStatus
+);
+
 // @route   GET /api/admin/orders/items/by-supplier
 router.get(
   '/orders/items/by-supplier',

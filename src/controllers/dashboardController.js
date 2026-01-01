@@ -30,26 +30,26 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     // Users stats
     User.countDocuments({ role: 'user', accountStatus: 'active' }),
     
-    // Pending orders
-    Order.countDocuments({ 
-      status: { $in: ['pending', 'confirmed', 'processing'] } 
+    // Pending orders - use computed.overallProgress
+    Order.countDocuments({
+      'computed.overallProgress': 'pending'
     }),
-    
-    // Completed orders
-    Order.countDocuments({ status: 'delivered' }),
-    
-    // Total revenue from completed orders
+
+    // Completed orders - use computed.overallProgress
+    Order.countDocuments({ 'computed.overallProgress': 'completed' }),
+
+    // Total revenue from charged orders
     Order.aggregate([
-      { 
-        $match: { 
-          'payment.status': 'completed' 
-        } 
+      {
+        $match: {
+          'payment.status': 'charged'
+        }
       },
-      { 
-        $group: { 
-          _id: null, 
-          total: { $sum: '$pricing.total' } 
-        } 
+      {
+        $group: {
+          _id: null,
+          total: { $sum: { $ifNull: ['$payment.chargedAmount', '$pricing.adjustedTotal'] } }
+        }
       }
     ]),
     
@@ -146,7 +146,7 @@ export const getTopProducts = asyncHandler(async (req, res) => {
     {
       $match: {
         createdAt: { $gte: thirtyDaysAgo },
-        'payment.status': 'completed'
+        'payment.status': 'charged'
       }
     },
     { $unwind: '$items' },
@@ -211,7 +211,7 @@ export const getSalesChartData = asyncHandler(async (req, res) => {
     {
       $match: {
         createdAt: { $gte: startDate },
-        'payment.status': 'completed'
+        'payment.status': 'charged'
       }
     },
     {
@@ -270,7 +270,7 @@ export const getRevenueByCategory = asyncHandler(async (req, res) => {
     {
       $match: {
         createdAt: { $gte: thirtyDaysAgo },
-        'payment.status': 'completed'
+        'payment.status': 'charged'
       }
     },
     { $unwind: '$items' },
