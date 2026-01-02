@@ -437,7 +437,15 @@ export const updateProduct = asyncHandler(async (req, res) => {
     // 4️⃣ עדכן את שאר השדות (הכל חוץ מזמינות)
     const sanitizedData = sanitizeUpdateData(req.body, availabilityChanged);
 
+    // ✅ שמור את stock.available הנוכחי לפני העדכון
+    const currentStockAvailable = product.stock?.available;
+
     Object.assign(product, sanitizedData);
+
+    // ✅ שחזר את stock.available אם הוא נמחק (כי הטופס לא שולח אותו)
+    if (currentStockAvailable !== undefined && product.stock && product.stock.available === undefined) {
+      product.stock.available = currentStockAvailable;
+    }
 
     // 5️⃣ שמור
     await product.save({ session });
@@ -549,27 +557,25 @@ function detectAvailabilityChanges(currentProduct, updateData) {
 function sanitizeUpdateData(updateData, availabilityChanges) {
   const sanitized = { ...updateData };
 
-  // אם טיפלנו בזמינות דרך השירות, הסר אותה מה-update הרגיל
-  if (availabilityChanges.hasChanges) {
-    // הסר stock.available אבל השאר שאר שדות stock
-    if (sanitized.stock) {
-      const { available, ...restStock } = sanitized.stock;
-      sanitized.stock = restStock;
-    }
+  // ✅ תמיד הסר stock.available - זה מנוהל רק דרך ProductAvailabilityService!
+  // הסר stock.available אבל השאר שאר שדות stock
+  if (sanitized.stock) {
+    const { available, ...restStock } = sanitized.stock;
+    sanitized.stock = restStock;
+  }
 
-    // הסר stock.available מווריאנטים אבל השאר שאר השדות
-    if (sanitized.variants) {
-      sanitized.variants = sanitized.variants.map(variant => {
-        if (variant.stock) {
-          const { available, ...restStock } = variant.stock;
-          return {
-            ...variant,
-            stock: restStock
-          };
-        }
-        return variant;
-      });
-    }
+  // הסר stock.available מווריאנטים אבל השאר שאר השדות
+  if (sanitized.variants) {
+    sanitized.variants = sanitized.variants.map(variant => {
+      if (variant.stock) {
+        const { available, ...restStock } = variant.stock;
+        return {
+          ...variant,
+          stock: restStock
+        };
+      }
+      return variant;
+    });
   }
 
   return sanitized;
