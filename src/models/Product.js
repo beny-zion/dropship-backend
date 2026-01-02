@@ -228,11 +228,16 @@ const productSchema = new mongoose.Schema({
     }
   },
   
-  // קטגוריה ותגיות
+  // קטגוריות - מערך של קטגוריות (חדש! מאפשר למוצר להיות במספר קטגוריות)
+  categories: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category'
+  }],
+
+  // ⚠️ קטגוריה יחידה - לתאימות לאחור (deprecated - השתמשו ב-categories)
   category: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Category',
-    required: [true, 'חובה לבחור קטגוריה למוצר']
+    ref: 'Category'
   },
 
   // שדה מחרוזת ישן לתאימות לאחור (deprecated)
@@ -519,6 +524,19 @@ productSchema.pre('save', function(next) {
   next();
 });
 
+// ✅ תאימות לאחור: אם יש category אבל לא categories, המר אוטומטית
+productSchema.pre('save', function(next) {
+  // אם יש category אבל categories ריק/לא קיים - המר
+  if (this.category && (!this.categories || this.categories.length === 0)) {
+    this.categories = [this.category];
+  }
+  // אם יש categories אבל לא category - קבע את הראשון כ-category
+  else if (this.categories && this.categories.length > 0 && !this.category) {
+    this.category = this.categories[0];
+  }
+  next();
+});
+
 // אינדקסים
 productSchema.index(
   { asin: 1 },
@@ -528,7 +546,8 @@ productSchema.index(
   }
 );
 // slug index is created automatically by unique: true in schema
-productSchema.index({ category: 1 });
+productSchema.index({ categories: 1 }); // אינדקס למערך הקטגוריות החדש
+productSchema.index({ category: 1 }); // אינדקס לקטגוריה הישנה (תאימות לאחור)
 productSchema.index({ 'price.ils': 1 });
 productSchema.index({ 'rating.average': -1 });
 productSchema.index({ featured: -1, createdAt: -1 });

@@ -629,7 +629,7 @@ orderSchema.pre('save', function(next) {
 
 // Update user stats when order is created
 orderSchema.post('save', async function(doc) {
-  if (doc.isNew && doc.payment.status === 'completed') {
+  if (doc.isNew && doc.payment.status === 'charged') {
     const User = mongoose.model('User');
     await User.findByIdAndUpdate(doc.user, {
       $inc: {
