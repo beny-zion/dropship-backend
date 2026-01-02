@@ -43,16 +43,18 @@ export const getProducts = async (req, res) => {
       'stock.available': true
     };
 
-    // פילטר לפי קטגוריה - תמיכה ב-slug או ID
+    // פילטר לפי קטגוריה - תמיכה ב-slug או ID (תומך גם בשדה category וגם categories)
     if (category && category !== 'all') {
+      let categoryId = null;
+
       // בדוק אם זה ObjectId תקין
       if (mongoose.Types.ObjectId.isValid(category) && category.length === 24) {
-        query.category = category;
+        categoryId = category;
       } else {
         // אם זה לא ID, חפש לפי slug
         const categoryDoc = await Category.findOne({ slug: category }).lean();
         if (categoryDoc) {
-          query.category = categoryDoc._id;
+          categoryId = categoryDoc._id;
         } else {
           // אם לא נמצאה קטגוריה, החזר תוצאה ריקה
           return res.json({
@@ -67,6 +69,12 @@ export const getProducts = async (req, res) => {
           });
         }
       }
+
+      // תמיכה בשני השדות - ישן וחדש
+      query.$or = [
+        { category: categoryId }, // שדה ישן
+        { categories: categoryId } // מערך חדש
+      ];
     }
 
     // פילטר לפי מחיר
@@ -126,7 +134,8 @@ export const getProducts = async (req, res) => {
     // ביצוע query - מסננים שדות רגישים ומידע אמזון
     const [products, total] = await Promise.all([
       Product.find(query)
-        .populate('category', 'name slug styling') // Populate category with name, slug, and styling
+        .populate('category', 'name slug styling') // קטגוריה ישנה
+        .populate('categories', 'name slug styling') // מערך קטגוריות חדש
         .sort(sortOption)
         .limit(limitNum)
         .skip(skip)

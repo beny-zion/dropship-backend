@@ -33,9 +33,12 @@ export const getAllProducts = asyncHandler(async (req, res) => {
     filter.status = req.query.status;
   }
 
-  // Filter by category
+  // Filter by category (תמיכה גם בשדה הישן וגם בחדש)
   if (req.query.category) {
-    filter.category = req.query.category;
+    filter.$or = [
+      { category: req.query.category }, // שדה ישן
+      { categories: req.query.category } // מערך חדש
+    ];
   }
 
   // Filter by stock availability
@@ -70,7 +73,8 @@ export const getAllProducts = asyncHandler(async (req, res) => {
   // Execute queries in parallel
   const [products, total] = await Promise.all([
     Product.find(filter)
-      .populate('category', 'name slug')
+      .populate('category', 'name slug') // קטגוריה ישנה
+      .populate('categories', 'name slug') // מערך קטגוריות חדש
       .populate('inventoryChecks.lastChecked.checkedBy', 'name email') // 🆕 טען גם inventoryChecks!
       .sort(sortBy)
       .skip(skip)
@@ -103,7 +107,8 @@ export const getAllProducts = asyncHandler(async (req, res) => {
 // @access  Private/Admin
 export const getProductById = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id)
-    .populate('category', 'name slug')
+    .populate('category', 'name slug') // קטגוריה ישנה
+    .populate('categories', 'name slug') // מערך קטגוריות חדש
     .lean();
 
   if (!product) {
@@ -157,35 +162,45 @@ export const getProductById = asyncHandler(async (req, res) => {
 // @route   POST /api/admin/products
 // @access  Private/Admin
 export const createProduct = asyncHandler(async (req, res) => {
-  // ✅ 1. בדיקה ש-category נשלח בכלל (חובה!)
-  if (!req.body.category) {
+  // ✅ 1. בדיקה שיש לפחות קטגוריה אחת (חובה!)
+  const hasCategories = req.body.categories && Array.isArray(req.body.categories) && req.body.categories.length > 0;
+  const hasCategory = req.body.category; // תמיכה בשדה הישן
+
+  if (!hasCategories && !hasCategory) {
     return res.status(400).json({
       success: false,
-      message: 'חובה לבחור קטגוריה למוצר'
+      message: 'חובה לבחור לפחות קטגוריה אחת למוצר'
     });
   }
 
-  // ✅ 2. בדיקה שה-category תקין (ObjectId)
-  if (!req.body.category.match(/^[0-9a-fA-F]{24}$/)) {
+  // ✅ 2. המרת category ישן ל-categories אם נשלח
+  if (hasCategory && !hasCategories) {
+    req.body.categories = [req.body.category];
+  }
+
+  // ✅ 3. בדיקה שכל הקטגוריות תקינות (ObjectId)
+  for (const catId of req.body.categories) {
+    if (!catId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'פורמט קטגוריה לא תקין (חייב להיות ObjectId)'
+      });
+    }
+  }
+
+  // ✅ 4. בדיקה שכל הקטגוריות קיימות במערכת
+  const categoryDocs = await Category.find({ _id: { $in: req.body.categories } });
+  if (categoryDocs.length !== req.body.categories.length) {
     return res.status(400).json({
       success: false,
-      message: 'פורמט קטגוריה לא תקין (חייב להיות ObjectId)'
+      message: 'אחת או יותר מהקטגוריות שנבחרו לא קיימות במערכת'
     });
   }
 
-  // ✅ 3. בדיקה שהקטגוריה קיימת במערכת
-  const category = await Category.findById(req.body.category);
-  if (!category) {
-    return res.status(400).json({
-      success: false,
-      message: 'הקטגוריה שנבחרה לא קיימת במערכת'
-    });
-  }
-
-  // ✅ 4. ניקוי שדות לא רצויים (למניעת המצאת שדות)
+  // ✅ 5. ניקוי שדות לא רצויים (למניעת המצאת שדות)
   const allowedFields = [
     'asin', 'name_he', 'name_en', 'description_he', 'description_en',
-    'price', 'originalPrice', 'discount', 'category', 'subcategory', 'tags',
+    'price', 'originalPrice', 'discount', 'category', 'categories', 'subcategory', 'tags',
     'images', 'links', 'supplier', 'shipping', 'shippingInfo',
     'specifications', 'features', 'variants', 'status', 'featured',
     'costBreakdown', 'stock'
@@ -320,7 +335,29 @@ export const updateProduct = asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if category exists in the new category system
+    // בדיקה שיש קטגוריות (אם מעדכנים)
+    if (req.body.categories !== undefined) {
+      // אם שולחים categories, צריך לפחות אחת
+      if (!Array.isArray(req.body.categories) || req.body.categories.length === 0) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: 'חובה לבחור לפחות קטגוריה אחת'
+        });
+      }
+
+      // בדיקה שכל הקטגוריות קיימות
+      const categoryDocs = await Category.find({ _id: { $in: req.body.categories } }).session(session);
+      if (categoryDocs.length !== req.body.categories.length) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: 'אחת או יותר מהקטגוריות שנבחרו לא קיימות במערכת'
+        });
+      }
+    }
+
+    // Check if category exists in the new category system (תאימות לאחור)
     if (req.body.category && req.body.category !== product.category?.toString()) {
       const category = await Category.findById(req.body.category).session(session);
       if (!category) {
