@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import OrderStatus from '../models/OrderStatus.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getOrderStatistics } from '../utils/orderStatusCalculation.js';
+import { sendDeliveryConfirmation, sendCustomEmail, sendBulkEmails } from '../services/emailService.js';
 
 // @desc    Get all orders with pagination and filters
 // @route   GET /api/admin/orders
@@ -1306,6 +1307,229 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Send delivery confirmation email
+// @route   POST /api/admin/orders/:id/send-delivery-email
+// @access  Private/Admin
+export const sendDeliveryEmail = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id)
+    .populate('user', 'email firstName lastName');
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: 'הזמנה לא נמצאה'
+    });
+  }
+
+  // Update delivery date if not set
+  if (!order.shipping.deliveredAt) {
+    order.shipping.deliveredAt = new Date();
+    await order.save();
+  }
+
+  const result = await sendDeliveryConfirmation(order);
+
+  if (result.success) {
+    // Log email sent in timeline
+    order.timeline.push({
+      status: 'email_sent',
+      message: 'מייל אישור מסירה נשלח ללקוח',
+      timestamp: new Date(),
+      internal: true
+    });
+    await order.save();
+
+    res.json({
+      success: true,
+      message: 'מייל אישור מסירה נשלח בהצלחה',
+      data: { messageId: result.messageId }
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בשליחת מייל',
+      error: result.error
+    });
+  }
+});
+
+// @desc    Send custom email to customer
+// @route   POST /api/admin/orders/:id/send-custom-email
+// @access  Private/Admin
+export const sendCustomEmailToCustomer = asyncHandler(async (req, res) => {
+  const { subject, body, includeOrderContext } = req.body;
+
+  if (!subject || !body) {
+    return res.status(400).json({
+      success: false,
+      message: 'נדרש נושא ותוכן למייל'
+    });
+  }
+
+  const order = await Order.findById(req.params.id)
+    .populate('user', 'email firstName lastName');
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: 'הזמנה לא נמצאה'
+    });
+  }
+
+  const email = order.shippingAddress?.email || order.user?.email;
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: 'אין כתובת מייל ללקוח'
+    });
+  }
+
+  const result = await sendCustomEmail(
+    email,
+    subject,
+    body,
+    includeOrderContext ? order : null
+  );
+
+  if (result.success) {
+    // Log email sent in timeline
+    order.timeline.push({
+      status: 'email_sent',
+      message: `מייל נשלח ללקוח: ${subject}`,
+      timestamp: new Date(),
+      internal: true
+    });
+    await order.save();
+
+    res.json({
+      success: true,
+      message: 'מייל נשלח בהצלחה',
+      data: { messageId: result.messageId }
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בשליחת מייל',
+      error: result.error
+    });
+  }
+});
+
+// @desc    Get all customers for email sending
+// @route   GET /api/admin/email/customers
+// @access  Private/Admin
+export const getCustomersForEmail = asyncHandler(async (req, res) => {
+  const { search } = req.query;
+
+  let query = { accountStatus: 'active' };
+
+  if (search) {
+    const escapedSearch = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    query.$or = [
+      { email: { $regex: escapedSearch, $options: 'i' } },
+      { firstName: { $regex: escapedSearch, $options: 'i' } },
+      { lastName: { $regex: escapedSearch, $options: 'i' } }
+    ];
+  }
+
+  const customers = await User.find(query)
+    .select('email firstName lastName')
+    .sort({ createdAt: -1 })
+    .limit(100);
+
+  res.json({
+    success: true,
+    data: customers
+  });
+});
+
+// @desc    Send bulk email to multiple customers
+// @route   POST /api/admin/email/send-bulk
+// @access  Private/Admin
+export const sendBulkEmailToCustomers = asyncHandler(async (req, res) => {
+  const { recipients, subject, body, orderId } = req.body;
+
+  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'נדרשים נמענים'
+    });
+  }
+
+  if (!subject || !body) {
+    return res.status(400).json({
+      success: false,
+      message: 'נדרש נושא ותוכן למייל'
+    });
+  }
+
+  // Get order if specified
+  let order = null;
+  if (orderId) {
+    order = await Order.findById(orderId);
+  }
+
+  const results = await sendBulkEmails(recipients, subject, body, order);
+
+  const successCount = results.filter(r => r.success).length;
+  const failedCount = results.filter(r => !r.success).length;
+
+  res.json({
+    success: true,
+    message: `${successCount} מיילים נשלחו בהצלחה, ${failedCount} נכשלו`,
+    data: {
+      sent: successCount,
+      failed: failedCount,
+      results
+    }
+  });
+});
+
+// @desc    Send email to external address (not in system)
+// @route   POST /api/admin/email/send-external
+// @access  Private/Admin
+export const sendExternalEmail = asyncHandler(async (req, res) => {
+  const { email, subject, body, orderId } = req.body;
+
+  if (!email || !subject || !body) {
+    return res.status(400).json({
+      success: false,
+      message: 'נדרש כתובת מייל, נושא ותוכן'
+    });
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({
+      success: false,
+      message: 'כתובת מייל לא תקינה'
+    });
+  }
+
+  // Get order if specified
+  let order = null;
+  if (orderId) {
+    order = await Order.findById(orderId);
+  }
+
+  const result = await sendCustomEmail(email, subject, body, order);
+
+  if (result.success) {
+    res.json({
+      success: true,
+      message: 'מייל נשלח בהצלחה',
+      data: { messageId: result.messageId }
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בשליחת מייל',
+      error: result.error
+    });
+  }
+});
+
 export default {
   getAllOrders,
   getOrderById,
@@ -1321,5 +1545,11 @@ export default {
   getOrdersKPIs,
   getOrdersFiltered,
   getItemsGroupedBySupplier,
-  bulkUpdateOrderStatus
+  bulkUpdateOrderStatus,
+  // Email functions
+  sendDeliveryEmail,
+  sendCustomEmailToCustomer,
+  getCustomersForEmail,
+  sendBulkEmailToCustomers,
+  sendExternalEmail
 };

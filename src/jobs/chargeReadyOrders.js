@@ -15,6 +15,7 @@
 import Order from '../models/Order.js';
 import { capturePayment } from '../services/paymentService.js';
 import { acquireLock, releaseLock } from '../utils/distributedLock.js';
+import { sendPaymentChargedConfirmation } from '../services/emailService.js';
 
 /**
  * מבצע גביה להזמנה בודדת
@@ -74,6 +75,19 @@ async function chargeOrder(order) {
       });
 
       await order.save();
+
+      // ✅ שלח מייל אישור גביה
+      try {
+        const populatedOrder = await Order.findById(order._id).populate('user', 'email firstName lastName');
+        const emailResult = await sendPaymentChargedConfirmation(populatedOrder);
+        if (emailResult.success) {
+          console.log(`📧 [ChargeJob] Payment confirmation email sent for ${order.orderNumber}`);
+        } else {
+          console.log(`⚠️ [ChargeJob] Failed to send payment email: ${emailResult.error}`);
+        }
+      } catch (emailError) {
+        console.error('❌ [ChargeJob] Email send error:', emailError.message);
+      }
 
       return { success: true, chargedAmount: result.chargedAmount };
 

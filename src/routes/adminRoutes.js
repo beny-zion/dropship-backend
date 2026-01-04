@@ -611,4 +611,53 @@ router.patch(
   adminUsersController.updateUserStatus
 );
 
+// ============================================
+// EMAIL MANAGEMENT ROUTES (NEW)
+// ============================================
+
+// @route   POST /api/admin/orders/:id/send-delivery-email
+// @desc    שליחת מייל אישור מסירה ללקוח
+router.post(
+  '/orders/:id/send-delivery-email',
+  validateMongoId,
+  logAdminAction('SEND_DELIVERY_EMAIL', 'Order'),
+  adminOrdersController.sendDeliveryEmail
+);
+
+// @route   POST /api/admin/orders/:id/send-custom-email
+// @desc    שליחת מייל מותאם אישית ללקוח (בהקשר להזמנה)
+router.post(
+  '/orders/:id/send-custom-email',
+  validateMongoId,
+  logAdminAction('SEND_CUSTOM_EMAIL', 'Order'),
+  adminOrdersController.sendCustomEmailToCustomer
+);
+
+// @route   GET /api/admin/email/customers
+// @desc    רשימת לקוחות לשליחת מייל
+router.get(
+  '/email/customers',
+  logAdminAction('VIEW_CUSTOMERS_FOR_EMAIL', 'User'),
+  adminOrdersController.getCustomersForEmail
+);
+
+// @route   POST /api/admin/email/send-bulk
+// @desc    שליחת מייל המוני ללקוחות
+router.post(
+  '/email/send-bulk',
+  requireAdminOrManager,
+  userRateLimit(10, 60000), // 10 bulk emails per minute
+  auditLog('SEND_BULK_EMAIL', 'Email'),
+  adminOrdersController.sendBulkEmailToCustomers
+);
+
+// @route   POST /api/admin/email/send-external
+// @desc    שליחת מייל לכתובת חיצונית (לא במערכת)
+router.post(
+  '/email/send-external',
+  requireAdminOrManager,
+  logAdminAction('SEND_EXTERNAL_EMAIL', 'Email'),
+  adminOrdersController.sendExternalEmail
+);
+
 export default router;

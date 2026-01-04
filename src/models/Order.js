@@ -400,6 +400,19 @@ const orderSchema = new mongoose.Schema({
       hypStatusCode: Number
     }],
 
+    // 🔐 ניסיונות חשודים (Security)
+    suspiciousAttempts: [{
+      timestamp: Date,
+      ip: String,
+      expectedAmount: Number,
+      receivedAmount: Number,
+      transactionId: String,
+      reason: {
+        type: String,
+        enum: ['amount_mismatch', 'invalid_signature', 'duplicate_callback']
+      }
+    }],
+
     // היסטוריית תשלומים
     paymentHistory: [{
       action: {

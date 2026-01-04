@@ -25,6 +25,8 @@ import {
   holdCredit
 } from '../services/paymentService.js';
 import { chargeReadyOrdersManual } from '../jobs/chargeReadyOrders.js';
+import { sendOrderConfirmation } from '../services/emailService.js';
+import { verifyHyPaySignature } from '../utils/hypPaySignature.js';
 
 // ============================================================
 // ✅ IFRAME Payment Flow (New & Recommended)
@@ -116,6 +118,26 @@ export const callbackSuccess = async (req, res) => {
     // ✅ Phase 6.5.4: רק מזהים, לא כל ה-query params
     console.log('[PaymentController] Success callback - Order:', req.query.Order, 'CCode:', req.query.CCode, 'Id:', req.query.Id);
 
+    // 🔐 SECURITY: אימות Signature מ-HyPay
+    const signatureVerification = await verifyHyPaySignature(req.query);
+
+    if (!signatureVerification.valid) {
+      console.error('⚠️ SECURITY ALERT: Invalid signature from IP:', req.ip || req.connection?.remoteAddress);
+      console.error('   Order:', req.query.Order);
+      console.error('   Amount:', req.query.Amount);
+      console.error('   Transaction ID:', req.query.Id);
+      console.error('   Error:', signatureVerification.error);
+
+      // TODO: שלח התראה למנהל על ניסיון חשוד
+
+      return res.status(403).json({
+        success: false,
+        error: 'Invalid signature - security verification failed'
+      });
+    }
+
+    console.log('✅ [PaymentController] Signature verification passed');
+
     // עבד את התשובה מ-HyPay
     const callbackResult = processCallback(req.query);
 
@@ -136,6 +158,41 @@ export const callbackSuccess = async (req, res) => {
       console.error('[PaymentController] Order not found for callback');
       return res.redirect('/orders?error=' + encodeURIComponent('הזמנה לא נמצאה'));
     }
+
+    // 🔐 SECURITY: ולידציה של סכום - בדיקה שהסכום מ-HyPay תואם לסכום המקורי
+    const expectedAmount = Math.round(order.pricing.total);
+    const receivedAmount = Math.round(callbackResult.amount);
+
+    if (Math.abs(expectedAmount - receivedAmount) > 0.01) {
+      console.error('⚠️ SECURITY ALERT: Amount mismatch!');
+      console.error(`   Order: ${order.orderNumber}`);
+      console.error(`   Expected: ₪${expectedAmount}`);
+      console.error(`   Received: ₪${receivedAmount}`);
+      console.error(`   Transaction ID: ${callbackResult.transactionId}`);
+      console.error(`   IP: ${req.ip || req.connection?.remoteAddress}`);
+
+      // שמור ניסיון חשוד בהזמנה
+      order.payment = order.payment || {};
+      order.payment.suspiciousAttempts = order.payment.suspiciousAttempts || [];
+      order.payment.suspiciousAttempts.push({
+        timestamp: new Date(),
+        ip: req.ip || req.connection?.remoteAddress,
+        expectedAmount,
+        receivedAmount,
+        transactionId: callbackResult.transactionId,
+        reason: 'amount_mismatch'
+      });
+      await order.save();
+
+      // TODO: שלח התראה למנהל
+
+      return res.status(400).json({
+        success: false,
+        error: 'Amount verification failed'
+      });
+    }
+
+    console.log('✅ [PaymentController] Amount verification passed:', expectedAmount);
 
     // ✅ בדיקה שההזמנה לא פגה
     if (order.status === 'awaiting_payment' && order.expiresAt && order.expiresAt < new Date()) {
@@ -217,6 +274,21 @@ export const callbackSuccess = async (req, res) => {
     const deletedCart = await Cart.findOneAndDelete({ user: order.user });
     if (deletedCart) {
       console.log(`🛒 [PaymentController] Cart cleared for user ${order.user} after successful payment`);
+    }
+
+    // ✅ שלח מייל אישור הזמנה
+    try {
+      // Populate order with user data for email
+      const populatedOrder = await Order.findById(order._id).populate('user', 'email firstName lastName');
+      const emailResult = await sendOrderConfirmation(populatedOrder);
+      if (emailResult.success) {
+        console.log(`📧 [PaymentController] Order confirmation email sent for ${order.orderNumber}`);
+      } else {
+        console.log(`⚠️ [PaymentController] Failed to send confirmation email: ${emailResult.error}`);
+      }
+    } catch (emailError) {
+      console.error('❌ [PaymentController] Email send error:', emailError.message);
+      // Don't fail the payment callback because of email error
     }
 
     // החזר תשובת הצלחה פשוטה

@@ -91,6 +91,9 @@ export function generatePaymentUrl(order) {
       UTF8out: 'True',
       MoreData: 'True',  // מחזיר UID ו-ACode (חובה ל-J5)
 
+      // 🔐 SECURITY: בקש signature לאימות Callback
+      Sign: 'True',  // מחזיר Sign parameter ב-callback לאימות
+
       // אל תשלח UserId - נשאיר ריק
 
       // מזהה פנימי
