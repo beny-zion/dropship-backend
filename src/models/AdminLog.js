@@ -68,7 +68,12 @@ const adminLogSchema = new mongoose.Schema({
       'CREATE_REFUND',
       'VIEW_REFUNDS',
       'CHECK_CAN_CHARGE',
-      'MANUAL_CHARGE'
+      'MANUAL_CHARGE',
+      // Email Management (NEW)
+      'SEND_DELIVERY_EMAIL',
+      'SEND_CUSTOM_EMAIL',
+      'VIEW_CUSTOMERS_FOR_EMAIL',
+      'SEND_EXTERNAL_EMAIL'
     ]
   },
 

@@ -66,7 +66,17 @@ const auditLogSchema = new mongoose.Schema({
       'CREATE_REFUND',
       'VIEW_REFUNDS',
       'CHECK_CAN_CHARGE',
-      'MANUAL_CHARGE'
+      'MANUAL_CHARGE',
+
+      // Email actions (NEW)
+      'SEND_BULK_EMAIL',
+      'SEND_DELIVERY_EMAIL',
+      'SEND_CUSTOM_EMAIL',
+      'VIEW_CUSTOMERS_FOR_EMAIL',
+      'SEND_EXTERNAL_EMAIL',
+
+      // Rate limiting
+      'RATE_LIMIT_EXCEEDED'
     ],
     index: true
   },
@@ -74,7 +84,7 @@ const auditLogSchema = new mongoose.Schema({
   // יעד הפעולה
   targetType: {
     type: String,
-    enum: ['Order', 'OrderItem', 'User', 'Product', 'System', 'SystemSettings', 'Refund', 'Payment'],
+    enum: ['Order', 'OrderItem', 'User', 'Product', 'System', 'SystemSettings', 'Refund', 'Payment', 'Email'],
     index: true
   },
   targetId: {

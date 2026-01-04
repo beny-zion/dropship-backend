@@ -12,15 +12,8 @@ const createOAuth2Client = () => {
 
 // Create nodemailer transporter with Gmail OAuth2
 const createTransporter = async () => {
-  const oauth2Client = createOAuth2Client();
-
-  oauth2Client.setCredentials({
-    refresh_token: process.env.GMAIL_REFRESH_TOKEN
-  });
-
+  // הסרנו את הקוד שמפיק accessToken ידנית
   try {
-    const accessToken = await oauth2Client.getAccessToken();
-
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -29,7 +22,6 @@ const createTransporter = async () => {
         clientId: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-        accessToken: accessToken.token
       }
     });
 

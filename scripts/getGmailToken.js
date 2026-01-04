@@ -11,8 +11,7 @@
  *    - חפש "Gmail API" והפעל אותו
  * 5. לך ל-APIs & Services > Credentials
  *    - לחץ על OAuth 2.0 Client שלך
- *    - וודא שיש Authorized redirect URI: http://localhost:5000/api/auth/gmail/callback
- *    (כנראה שכבר יש לך http://localhost:5000/api/auth/google/callback - פשוט הוסף עוד אחד)
+ *    - הוסף Authorized redirect URI: http://localhost:3333/callback
  *
  * 6. הרץ את הסקריפט הזה: node scripts/getGmailToken.js
  * 7. עקוב אחרי הקישור שיופיע והתחבר עם חשבון Gmail
@@ -23,12 +22,27 @@ import { google } from 'googleapis';
 import http from 'http';
 import { URL } from 'url';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load .env from backend directory
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const REDIRECT_URI = 'http://localhost:5000/api/auth/gmail/callback';
+const REDIRECT_URI = 'http://localhost:3333/callback';
+
+// Validate environment variables
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  console.error('\n❌ שגיאה: לא נמצאו משתני סביבה!\n');
+  console.error('וודא שקובץ backend/.env מכיל:');
+  console.error('  GOOGLE_CLIENT_ID=...');
+  console.error('  GOOGLE_CLIENT_SECRET=...\n');
+  process.exit(1);
+}
 
 const oauth2Client = new google.auth.OAuth2(
   CLIENT_ID,
@@ -38,8 +52,7 @@ const oauth2Client = new google.auth.OAuth2(
 
 // Gmail API scopes
 const SCOPES = [
-  'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/gmail.compose'
+  'https://mail.google.com/'
 ];
 
 // Generate auth URL
@@ -61,9 +74,9 @@ console.log('\n⏳ ממתין לאישור...\n');
 
 // Start local server to catch the callback
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:5000`);
+  const url = new URL(req.url, `http://localhost:3333`);
 
-  if (url.pathname === '/api/auth/gmail/callback') {
+  if (url.pathname === '/callback') {
     const code = url.searchParams.get('code');
 
     if (code) {
@@ -123,6 +136,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(5000, () => {
-  console.log('🖥️  שרת מקומי פועל על http://localhost:5000');
+server.listen(3333, () => {
+  console.log('🖥️  שרת מקומי פועל על http://localhost:3333');
 });
