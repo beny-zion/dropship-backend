@@ -75,7 +75,7 @@ export async function verifyHyPaySignature(callbackParams) {
 
     // Parse תשובה (HyPay מחזיר URL-encoded string)
     const result = new URLSearchParams(response.data);
-    const ccode = String(result.get('CCode') || '');  // המרה ל-string
+    const ccode = String(result.get('CCode') || '').trim();  // המרה ל-string + הסרת רווחים
 
     console.log(`[HyPay Signature] Parsed CCode: "${ccode}" (type: ${typeof ccode})`);
 
