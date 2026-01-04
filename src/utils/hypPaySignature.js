@@ -69,9 +69,15 @@ export async function verifyHyPaySignature(callbackParams) {
       }
     });
 
+    // Debug: הדפס את התשובה המלאה
+    console.log('[HyPay Signature] Raw response type:', typeof response.data);
+    console.log('[HyPay Signature] Raw response:', response.data);
+
     // Parse תשובה (HyPay מחזיר URL-encoded string)
     const result = new URLSearchParams(response.data);
-    const ccode = result.get('CCode');
+    const ccode = String(result.get('CCode') || '');  // המרה ל-string
+
+    console.log(`[HyPay Signature] Parsed CCode: "${ccode}" (type: ${typeof ccode})`);
 
     if (ccode === '0') {
       console.log('✅ [HyPay Signature] Verification SUCCESS for Order:', callbackParams.Order);
