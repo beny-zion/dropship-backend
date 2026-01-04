@@ -11,18 +11,42 @@ const createOAuth2Client = () => {
 };
 
 // Create nodemailer transporter with Gmail OAuth2
+// const createTransporter = async () => {
+//   // הסרנו את הקוד שמפיק accessToken ידנית
+//   try {
+//     const transporter = nodemailer.createTransport({
+//       service: 'gmail',
+//       auth: {
+//         type: 'OAuth2',
+//         user: process.env.GMAIL_USER,
+//         clientId: process.env.GOOGLE_CLIENT_ID,
+//         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+//         refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+//       }
+//     });
+
+//     return transporter;
+//   } catch (error) {
+//     console.error('❌ Error creating email transporter:', error.message);
+//     throw error;
+//   }
+// };
+// בתוך emailService.js
 const createTransporter = async () => {
-  // הסרנו את הקוד שמפיק accessToken ידנית
   try {
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com', // הגדרה מפורשת של השרת
+      port: 465,               // שימוש בפורט SSL
+      secure: true,            // חובה עבור פורט 465
       auth: {
         type: 'OAuth2',
         user: process.env.GMAIL_USER,
         clientId: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-      }
+        // הערה: נתנו ל-Nodemailer לנהל את ה-Access Token לבד כדי למנוע בעיות סנכרון
+      },
+      connectionTimeout: 10000, // 10 שניות המתנה לחיבור לפני שגיאה
     });
 
     return transporter;
@@ -31,7 +55,6 @@ const createTransporter = async () => {
     throw error;
   }
 };
-
 // Verify email configuration
 export const verifyEmailConfig = async () => {
   try {
