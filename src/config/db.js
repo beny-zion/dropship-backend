@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { verifyEmailConfig } from '../services/emailService.js';
 
 const connectDB = async () => {
   try {
@@ -27,6 +28,9 @@ const connectDB = async () => {
     );
 
     console.log('⚡ Performance indexes verified!');
+
+    // Verify email service configuration
+    await verifyEmailConfig();
 
   } catch (error) {
     console.error(`❌ MongoDB Error: ${error.message}`);

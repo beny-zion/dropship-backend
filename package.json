@@ -36,7 +36,6 @@
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
     "node-cache": "^5.1.2",
-    "nodemailer": "^7.0.12",
     "slugify": "^1.6.6"
   },
   "devDependencies": {

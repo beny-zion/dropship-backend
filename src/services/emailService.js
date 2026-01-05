@@ -1,75 +1,105 @@
 import { google } from 'googleapis';
-import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
 
-// Gmail OAuth2 Configuration
-const createOAuth2Client = () => {
-  return new google.auth.OAuth2(
+dotenv.config();
+
+/**
+ * הגדרת לקוח OAuth2 עבור Gmail API
+ */
+const getOAuth2Client = () => {
+  const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_CALLBACK_URL
   );
+
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GMAIL_REFRESH_TOKEN
+  });
+
+  return oauth2Client;
 };
 
-// Create nodemailer transporter with Gmail OAuth2
-// const createTransporter = async () => {
-//   // הסרנו את הקוד שמפיק accessToken ידנית
-//   try {
-//     const transporter = nodemailer.createTransport({
-//       service: 'gmail',
-//       auth: {
-//         type: 'OAuth2',
-//         user: process.env.GMAIL_USER,
-//         clientId: process.env.GOOGLE_CLIENT_ID,
-//         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-//         refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-//       }
-//     });
-
-//     return transporter;
-//   } catch (error) {
-//     console.error('❌ Error creating email transporter:', error.message);
-//     throw error;
-//   }
-// };
-// בתוך emailService.js
-const createTransporter = async () => {
-  try {
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com', // הגדרה מפורשת של השרת
-      port: 465,               // שימוש בפורט SSL
-      secure: true,            // חובה עבור פורט 465
-      auth: {
-        type: 'OAuth2',
-        user: process.env.GMAIL_USER,
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-        // הערה: נתנו ל-Nodemailer לנהל את ה-Access Token לבד כדי למנוע בעיות סנכרון
-      },
-      connectionTimeout: 10000, // 10 שניות המתנה לחיבור לפני שגיאה
-    });
-
-    return transporter;
-  } catch (error) {
-    console.error('❌ Error creating email transporter:', error.message);
-    throw error;
-  }
-};
-// Verify email configuration
+/**
+ * אימות תקינות החיבור ל-API
+ */
 export const verifyEmailConfig = async () => {
   try {
     if (!process.env.GMAIL_REFRESH_TOKEN || process.env.GMAIL_REFRESH_TOKEN === 'YOUR_GMAIL_REFRESH_TOKEN') {
-      console.log('⚠️ Gmail not configured - run: node scripts/getGmailToken.js');
+      console.log('⚠️ Gmail API not configured - Missing Refresh Token');
       return false;
     }
 
-    const transporter = await createTransporter();
-    await transporter.verify();
-    console.log('📧 Email service is ready (Gmail OAuth2)');
+    const auth = getOAuth2Client();
+    const gmail = google.gmail({ version: 'v1', auth });
+
+    // בדיקה פשוטה מול הפרופיל של המשתמש כדי לוודא שהטוקן עובד
+    await gmail.users.getProfile({ userId: 'me' });
+
+    console.log('📧 Email service is ready (Gmail API via HTTPS)');
     return true;
   } catch (error) {
-    console.error('❌ Email service error:', error.message);
+    console.error('❌ Email service API error:', error.message);
     return false;
+  }
+};
+
+/**
+ * פונקציה פנימית ליצירת המייל בפורמט שגוגל דורשת (Base64url)
+ */
+const createRawMessage = (to, subject, html) => {
+  const fromName = process.env.EMAIL_FROM_NAME || 'Torino Shop';
+  const fromEmail = process.env.GMAIL_USER;
+
+  // קידוד נושא המייל לעברית (UTF-8)
+  const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
+
+  const str = [
+    `Content-Type: text/html; charset="UTF-8"`,
+    `MIME-Version: 1.0`,
+    `Content-Transfer-Encoding: 7bit`,
+    `to: ${to}`,
+    `from: "${fromName}" <${fromEmail}>`,
+    `subject: ${utf8Subject}`,
+    `\n`,
+    html
+  ].join('\n');
+
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+};
+
+/**
+ * שליחת מייל בודד
+ */
+export const sendEmail = async (to, subject, html) => {
+  try {
+    // Check if email is configured
+    if (!process.env.GMAIL_REFRESH_TOKEN || process.env.GMAIL_REFRESH_TOKEN === 'YOUR_GMAIL_REFRESH_TOKEN') {
+      console.log('⚠️ Email not sent - Gmail API not configured');
+      return { success: false, error: 'Gmail API not configured' };
+    }
+
+    const auth = getOAuth2Client();
+    const gmail = google.gmail({ version: 'v1', auth });
+
+    const raw = createRawMessage(to, subject, html);
+
+    const res = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: raw
+      }
+    });
+
+    console.log(`📧 Email sent to ${to}. Message ID: ${res.data.id}`);
+    return { success: true, messageId: res.data.id };
+  } catch (error) {
+    console.error('❌ Gmail API Send Error:', error.response?.data || error.message);
+    return { success: false, error: error.message };
   }
 };
 
@@ -477,42 +507,6 @@ export const getOrderStatusUpdateTemplate = (order, newStatus, message = '') => 
   return getBaseTemplate(content, `עדכון הזמנה #${order.orderNumber}`);
 };
 
-// Send email function
-export const sendEmail = async (to, subject, html, options = {}) => {
-  try {
-    // Check if email is configured
-    if (!process.env.GMAIL_REFRESH_TOKEN || process.env.GMAIL_REFRESH_TOKEN === 'YOUR_GMAIL_REFRESH_TOKEN') {
-      console.log('⚠️ Email not sent - Gmail not configured');
-      return { success: false, error: 'Gmail not configured' };
-    }
-
-    const transporter = await createTransporter();
-
-    const mailOptions = {
-      from: `"${process.env.EMAIL_FROM_NAME || 'Torino Shop'}" <${process.env.EMAIL_FROM_ADDRESS || process.env.GMAIL_USER}>`,
-      to,
-      subject,
-      html,
-      ...options
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log(`📧 Email sent to ${to}: ${info.messageId}`);
-
-    return {
-      success: true,
-      messageId: info.messageId
-    };
-  } catch (error) {
-    console.error('❌ Email send error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
-
 // High-level email sending functions
 
 // Send order confirmation
@@ -578,7 +572,7 @@ export const sendBulkEmails = async (recipients, subject, body, order = null) =>
     results.push({ email, ...result });
 
     // Small delay between emails to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   return results;
