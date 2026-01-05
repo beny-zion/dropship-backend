@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import tokenBlacklist from '../utils/tokenBlacklist.js';
+import { refreshTokenIfNeeded } from './tokenRefresh.js'; // 🔄 Auto token refresh
 
 export const auth = async (req, res, next) => {
   try {
@@ -41,10 +42,12 @@ export const auth = async (req, res, next) => {
         });
       }
 
-      // שמירת ה-token ב-req לשימוש עתידי (logout)
+      // שמירת ה-token ב-req לשימוש עתידי (logout + refresh)
       req.token = token;
       req.user = user;
-      next();
+
+      // 🔄 Check if token needs refresh (sliding session)
+      refreshTokenIfNeeded(req, res, next);
     } catch (error) {
       return res.status(401).json({
         success: false,
