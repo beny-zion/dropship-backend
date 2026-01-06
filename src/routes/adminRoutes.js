@@ -22,6 +22,8 @@ import * as adminSettingsController from '../controllers/adminSettingsController
 import * as productAvailabilityController from '../controllers/productAvailabilityController.js';
 // ✅ Phase 10: Import refund controller
 import * as refundController from '../controllers/refundController.js';
+// ✅ AI: Import AI product controller
+import * as aiProductController from '../controllers/aiProductController.js';
 
 // Import validators
 import {
@@ -235,6 +237,25 @@ router.post(
   '/products/bulk-delete',
   logAdminAction('BULK_DELETE_PRODUCTS', 'Product'),
   adminProductsController.bulkDeleteProducts
+);
+
+// ============================================
+// AI PRODUCT PROCESSING ROUTES
+// ============================================
+
+// @route   POST /api/admin/ai/process-product
+// @desc    עיבוד טקסט גולמי של מוצר וחילוץ נתונים מובנים
+router.post(
+  '/ai/process-product',
+  logAdminAction('AI_PROCESS_PRODUCT', 'Product'),
+  aiProductController.processProductWithAI
+);
+
+// @route   GET /api/admin/ai/status
+// @desc    בדיקת סטטוס ה-AI
+router.get(
+  '/ai/status',
+  aiProductController.getAIStatus
 );
 
 // ============================================

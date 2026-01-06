@@ -740,7 +740,8 @@ function calculateFinalAmount(order) {
   );
 
   // משלוח - רק אם יש פריטים פעילים
-  const shipping = order.pricing?.shipping || 49;
+  // ✅ FIX: שימוש ב-?? במקום || כי 0 (משלוח חינם) הוא falsy
+  const shipping = order.pricing?.shipping ?? 49;
 
   return Math.round((subtotal + shipping) * 100) / 100; // 2 ספרות אחרי הנקודה
 }

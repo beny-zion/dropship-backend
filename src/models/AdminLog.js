@@ -73,7 +73,9 @@ const adminLogSchema = new mongoose.Schema({
       'SEND_DELIVERY_EMAIL',
       'SEND_CUSTOM_EMAIL',
       'VIEW_CUSTOMERS_FOR_EMAIL',
-      'SEND_EXTERNAL_EMAIL'
+      'SEND_EXTERNAL_EMAIL',
+      // AI Processing
+      'AI_PROCESS_PRODUCT'
     ]
   },
 
