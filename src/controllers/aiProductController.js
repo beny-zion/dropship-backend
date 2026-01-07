@@ -179,12 +179,13 @@ export const processProductWithAI = async (req, res) => {
   const startTime = Date.now();
 
   try {
-    const { rawData } = req.body;
+    const { rawData, existingTags = [] } = req.body;
 
     logSection(`🤖 AI PRODUCT PROCESSING [${requestId}]`, 'magenta');
     logKeyValue('Request ID', requestId);
     logKeyValue('Timestamp', new Date().toISOString());
     logKeyValue('Raw Data Length', rawData ? `${rawData.length.toLocaleString()} chars` : 'EMPTY');
+    logKeyValue('Existing Tags', existingTags.length > 0 ? `${existingTags.length} tags provided` : 'None');
 
     if (!rawData || rawData.trim().length < 20) {
       console.log(`${logColors.red}❌ REJECTED: Text too short${logColors.reset}`);
@@ -207,15 +208,20 @@ export const processProductWithAI = async (req, res) => {
 
     const model = getGeminiModel();
 
+    // בניית רשימת התגיות הקיימות לשימוש ב-prompt
+    const existingTagsSection = existingTags.length > 0
+      ? `\n⚠️ EXISTING TAGS IN SYSTEM (PRIORITY - USE THESE FIRST!):\n[${existingTags.join(', ')}]\n\nIMPORTANT: When selecting tags, PRIORITIZE tags from the list above! Only add NEW tags if absolutely necessary for the product and none of the existing tags fit.\n`
+      : '';
+
     const prompt = `You are a product catalog expert for TORINO fashion & lifestyle brand.
 Task: Extract structured product data from raw supplier text (Amazon, AliExpress, Kate Spade, etc).
-
+${existingTagsSection}
 IMPORTANT EXTRACTION RULES:
 1. Name: Translate to Hebrew (marketing style) + keep original English name
 2. Description: Write detailed Hebrew description (3+ paragraphs, marketing) + English description
 3. Specifications: Extract brand, model, weight, dimensions, material - everything available
 4. Features: List key benefits in Hebrew (5-10 items)
-5. Tags: 5-8 relevant Hebrew tags for SEO
+5. Tags: Select 5-8 relevant Hebrew tags. ${existingTags.length > 0 ? 'MUST prioritize tags from the EXISTING TAGS list above! Only add new tags if none of the existing ones fit.' : 'Use relevant Hebrew tags for SEO'}
 6. ASIN: Extract if exists (Amazon product code, usually 10 characters starting with B)
 7. SEO: Suggest Hebrew meta title (max 60 chars) and description (max 160 chars)
 8. Images: Extract ALL product image URLs (full https://... URLs). Look in src, data-src, srcset attributes
@@ -253,7 +259,7 @@ Return JSON in this exact structure (no markdown):
     "material": "Material/Composition"
   },
   "features": ["Feature 1 in Hebrew", "Feature 2 in Hebrew"],
-  "tags": ["tag1", "tag2"],
+  "tags": ["tag1", "tag2"], // IMPORTANT: Prefer existing tags from the system!
   "seo": {
     "title": "Hebrew SEO title (max 60 chars)",
     "description": "Hebrew meta description (max 160 chars)",

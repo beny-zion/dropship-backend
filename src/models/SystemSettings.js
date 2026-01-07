@@ -111,6 +111,28 @@ const systemSettingsSchema = new mongoose.Schema({
     }
   },
 
+  // הגדרות תמחור דינמי (Inventory Pricing Engine)
+  pricing: {
+    usdToIls: {
+      type: Number,
+      default: 3.2,
+      min: 1
+    },
+    multipliers: {
+      tier1: {
+        maxPrice: { type: Number, default: 50 },
+        multiplier: { type: Number, default: 2.0 }
+      },
+      tier2: {
+        maxPrice: { type: Number, default: 99 },
+        multiplier: { type: Number, default: 1.9 }
+      },
+      tier3: {
+        multiplier: { type: Number, default: 1.8 }
+      }
+    }
+  },
+
   // מטא דאטה
   lastUpdated: {
     type: Date,
@@ -225,6 +247,36 @@ systemSettingsSchema.statics.updateSettings = async function(updates, userId = n
     Object.assign(settings.general, updates.general);
   }
 
+  // עדכון הגדרות תמחור
+  if (updates.pricing) {
+    if (!settings.pricing) {
+      settings.pricing = {
+        usdToIls: 3.2,
+        multipliers: {
+          tier1: { maxPrice: 50, multiplier: 2.0 },
+          tier2: { maxPrice: 99, multiplier: 1.9 },
+          tier3: { multiplier: 1.8 }
+        }
+      };
+    }
+
+    if (updates.pricing.usdToIls !== undefined) {
+      settings.pricing.usdToIls = updates.pricing.usdToIls;
+    }
+
+    if (updates.pricing.multipliers) {
+      if (updates.pricing.multipliers.tier1) {
+        Object.assign(settings.pricing.multipliers.tier1, updates.pricing.multipliers.tier1);
+      }
+      if (updates.pricing.multipliers.tier2) {
+        Object.assign(settings.pricing.multipliers.tier2, updates.pricing.multipliers.tier2);
+      }
+      if (updates.pricing.multipliers.tier3) {
+        Object.assign(settings.pricing.multipliers.tier3, updates.pricing.multipliers.tier3);
+      }
+    }
+  }
+
   settings.lastUpdated = new Date();
   if (userId) {
     settings.updatedBy = userId;
@@ -257,6 +309,50 @@ systemSettingsSchema.methods.isMinimumAmountMet = function(amount, currency = 'U
     : this.order.minimumAmount.usd;
 
   return amount >= minimumAmount;
+};
+
+// ✅ Instance method: Calculate sell price from USD cost
+systemSettingsSchema.methods.calculateSellPrice = function(usdCost) {
+  const pricing = this.pricing || {
+    usdToIls: 3.2,
+    multipliers: {
+      tier1: { maxPrice: 50, multiplier: 2.0 },
+      tier2: { maxPrice: 99, multiplier: 1.9 },
+      tier3: { multiplier: 1.8 }
+    }
+  };
+
+  let multiplier;
+  if (usdCost <= pricing.multipliers.tier1.maxPrice) {
+    multiplier = pricing.multipliers.tier1.multiplier;
+  } else if (usdCost <= pricing.multipliers.tier2.maxPrice) {
+    multiplier = pricing.multipliers.tier2.multiplier;
+  } else {
+    multiplier = pricing.multipliers.tier3.multiplier;
+  }
+
+  const sellPriceUsd = Math.round(usdCost * multiplier * 100) / 100;
+  const sellPriceIls = Math.round(sellPriceUsd * pricing.usdToIls);
+
+  return {
+    usdCost,
+    multiplier,
+    sellPriceUsd,
+    sellPriceIls,
+    usdToIls: pricing.usdToIls
+  };
+};
+
+// ✅ Instance method: Get pricing config (for frontend)
+systemSettingsSchema.methods.getPricingConfig = function() {
+  return this.pricing || {
+    usdToIls: 3.2,
+    multipliers: {
+      tier1: { maxPrice: 50, multiplier: 2.0 },
+      tier2: { maxPrice: 99, multiplier: 1.9 },
+      tier3: { multiplier: 1.8 }
+    }
+  };
 };
 
 const SystemSettings = mongoose.model('SystemSettings', systemSettingsSchema);

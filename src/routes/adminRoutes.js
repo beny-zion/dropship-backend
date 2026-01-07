@@ -232,6 +232,15 @@ router.post(
   productAvailabilityController.batchUpdateAvailability
 );
 
+// @route   POST /api/admin/products/:productId/update-price
+// @desc    עדכון מחיר מוצר (עלות דולרית + חישוב מחיר מכירה)
+router.post(
+  '/products/:productId/update-price',
+  validateMongoId,
+  logAdminAction('UPDATE_PRODUCT_PRICE', 'Product'),
+  productAvailabilityController.updateProductPrice
+);
+
 // @route   POST /api/admin/products/bulk-delete
 router.post(
   '/products/bulk-delete',
@@ -502,6 +511,20 @@ router.put(
 router.get(
   '/settings/shipping-rate',
   adminSettingsController.getShippingRate
+);
+
+// @route   GET /api/admin/settings/pricing
+// @desc    קבלת הגדרות תמחור דינמי (מכפילים, שער חליפין)
+router.get(
+  '/settings/pricing',
+  adminSettingsController.getPricingConfig
+);
+
+// @route   POST /api/admin/settings/calculate-price
+// @desc    חישוב מחיר מכירה מומלץ לפי עלות דולרית
+router.post(
+  '/settings/calculate-price',
+  adminSettingsController.calculateRecommendedPrice
 );
 
 // @route   POST /api/admin/settings/reset

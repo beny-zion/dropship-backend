@@ -158,6 +158,61 @@ export const getShippingRate = async (req, res) => {
 };
 
 /**
+ * קבלת הגדרות תמחור דינמי
+ * GET /api/admin/settings/pricing
+ */
+export const getPricingConfig = async (req, res) => {
+  try {
+    const settings = await SystemSettings.getSettings();
+    const pricingConfig = settings.getPricingConfig();
+
+    res.json({
+      success: true,
+      data: pricingConfig
+    });
+  } catch (error) {
+    console.error('Get pricing config error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בקבלת הגדרות תמחור',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * חישוב מחיר מכירה מומלץ
+ * POST /api/admin/settings/calculate-price
+ */
+export const calculateRecommendedPrice = async (req, res) => {
+  try {
+    const { usdCost } = req.body;
+
+    if (!usdCost || isNaN(usdCost) || usdCost <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'usdCost חייב להיות מספר חיובי'
+      });
+    }
+
+    const settings = await SystemSettings.getSettings();
+    const priceCalculation = settings.calculateSellPrice(usdCost);
+
+    res.json({
+      success: true,
+      data: priceCalculation
+    });
+  } catch (error) {
+    console.error('Calculate price error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'שגיאה בחישוב מחיר',
+      error: error.message
+    });
+  }
+};
+
+/**
  * איפוס הגדרות לדיפולט
  * POST /api/admin/settings/reset
  */
@@ -216,5 +271,7 @@ export default {
   getSystemSettings,
   updateSystemSettings,
   getShippingRate,
+  getPricingConfig,
+  calculateRecommendedPrice,
   resetSystemSettings
 };

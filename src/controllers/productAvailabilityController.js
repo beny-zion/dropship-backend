@@ -425,6 +425,216 @@ export const batchUpdateAvailability = asyncHandler(async (req, res) => {
   console.log('🟣 [batchUpdateAvailability] ===== סיום =====');
 });
 
+/**
+ * @route   POST /api/admin/products/:productId/update-price
+ * @desc    עדכון מחיר מוצר (עלות דולרית חדשה + חישוב מחיר מכירה)
+ * @access  Private/Admin
+ */
+export const updateProductPrice = asyncHandler(async (req, res) => {
+  console.log('🟠 [updateProductPrice] ===== התחלה =====');
+  console.log('🟠 [updateProductPrice] Product ID:', req.params.productId);
+  console.log('🟠 [updateProductPrice] Body:', JSON.stringify(req.body, null, 2));
+
+  const { productId } = req.params;
+  const { newUsdCost, notes, confirmOnly = false, overrideSellPrice } = req.body;
+
+  // Import SystemSettings dynamically
+  const SystemSettings = (await import('../models/SystemSettings.js')).default;
+  const Product = (await import('../models/Product.js')).default;
+
+  // Get product
+  const product = await Product.findById(productId);
+  if (!product) {
+    return res.status(404).json({
+      success: false,
+      message: 'מוצר לא נמצא'
+    });
+  }
+
+  // Get pricing config
+  const settings = await SystemSettings.getSettings();
+
+  // If confirmOnly - just update the lastChecked timestamp without changing price
+  if (confirmOnly) {
+    console.log('🟠 [updateProductPrice] Confirm only - updating timestamp');
+
+    // Update lastChecked
+    if (!product.inventoryChecks) {
+      product.inventoryChecks = { history: [] };
+    }
+
+    product.inventoryChecks.lastChecked = {
+      timestamp: new Date(),
+      checkedBy: req.user._id,
+      checkedByName: req.user.name || req.user.email,
+      result: 'available',
+      notes: notes || 'אישור מחיר - ללא שינוי'
+    };
+
+    // Add to history
+    product.inventoryChecks.history.push({
+      timestamp: new Date(),
+      checkedBy: req.user._id,
+      checkedByName: req.user.name || req.user.email,
+      result: 'available',
+      notes: notes || 'אישור מחיר - ללא שינוי'
+    });
+
+    // Trim history to max 100
+    if (product.inventoryChecks.history.length > 100) {
+      product.inventoryChecks.history = product.inventoryChecks.history.slice(-100);
+    }
+
+    await product.save();
+
+    return res.json({
+      success: true,
+      message: 'מחיר אושר - תאריך בדיקה עודכן',
+      data: {
+        priceChanged: false,
+        lastChecked: product.inventoryChecks.lastChecked
+      }
+    });
+  }
+
+  // Validate newUsdCost
+  if (!newUsdCost || isNaN(newUsdCost) || newUsdCost <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'newUsdCost חייב להיות מספר חיובי'
+    });
+  }
+
+  const usdCost = parseFloat(newUsdCost);
+
+  // Calculate new sell price
+  const priceCalculation = settings.calculateSellPrice(usdCost);
+  console.log('🟠 [updateProductPrice] Price calculation:', priceCalculation);
+
+  // Get previous prices for comparison
+  const previousCostUsd = product.originalPrice?.usd || product.costBreakdown?.baseCost?.usd || 0;
+  const previousSellPriceIls = product.price?.ils || 0;
+  const priceDiffPercent = previousCostUsd > 0
+    ? ((usdCost - previousCostUsd) / previousCostUsd * 100).toFixed(1)
+    : 0;
+
+  // Update product prices
+  // 1. Update originalPrice (cost)
+  if (!product.originalPrice) {
+    product.originalPrice = {};
+  }
+  product.originalPrice.usd = usdCost;
+  product.originalPrice.ils = Math.round(usdCost * priceCalculation.usdToIls);
+
+  // 2. Update costBreakdown
+  if (!product.costBreakdown) {
+    product.costBreakdown = { baseCost: {} };
+  }
+  if (!product.costBreakdown.baseCost) {
+    product.costBreakdown.baseCost = {};
+  }
+  product.costBreakdown.baseCost.usd = usdCost;
+  product.costBreakdown.baseCost.ils = Math.round(usdCost * priceCalculation.usdToIls);
+
+  // 3. Update sell price - use override if provided, otherwise use calculated
+  const finalSellPriceIls = overrideSellPrice && !isNaN(overrideSellPrice) && overrideSellPrice > 0
+    ? parseFloat(overrideSellPrice)
+    : priceCalculation.sellPriceIls;
+
+  // Calculate USD sell price based on final ILS price (reverse calc)
+  const finalSellPriceUsd = overrideSellPrice
+    ? Math.round((finalSellPriceIls / priceCalculation.usdToIls) * 100) / 100
+    : priceCalculation.sellPriceUsd;
+
+  product.price = {
+    usd: finalSellPriceUsd,
+    ils: finalSellPriceIls
+  };
+
+  console.log('🟠 [updateProductPrice] Final sell price:', { finalSellPriceIls, finalSellPriceUsd, isOverride: !!overrideSellPrice });
+
+  // 4. Update price tracking
+  if (!product.priceTracking) {
+    product.priceTracking = {
+      lastCheckedPrice: {},
+      priceHistory: [],
+      priceAlertThreshold: 10
+    };
+  }
+
+  product.priceTracking.lastCheckedPrice = {
+    usd: usdCost,
+    ils: Math.round(usdCost * priceCalculation.usdToIls),
+    checkedAt: new Date(),
+    checkedBy: req.user._id
+  };
+
+  // Add to price history
+  product.priceTracking.priceHistory.push({
+    price: {
+      usd: usdCost,
+      ils: Math.round(usdCost * priceCalculation.usdToIls)
+    },
+    recordedAt: new Date(),
+    source: 'inventory_check',
+    recordedBy: req.user._id
+  });
+
+  // Trim history to max 50
+  if (product.priceTracking.priceHistory.length > 50) {
+    product.priceTracking.priceHistory = product.priceTracking.priceHistory.slice(-50);
+  }
+
+  // 5. Update inventory check
+  if (!product.inventoryChecks) {
+    product.inventoryChecks = { history: [] };
+  }
+
+  product.inventoryChecks.lastChecked = {
+    timestamp: new Date(),
+    checkedBy: req.user._id,
+    checkedByName: req.user.name || req.user.email,
+    result: 'available',
+    notes: notes || `עדכון מחיר: $${previousCostUsd} → $${usdCost} (${priceDiffPercent}%)`
+  };
+
+  product.inventoryChecks.history.push({
+    timestamp: new Date(),
+    checkedBy: req.user._id,
+    checkedByName: req.user.name || req.user.email,
+    result: 'available',
+    notes: notes || `עדכון מחיר: $${previousCostUsd} → $${usdCost} (${priceDiffPercent}%)`
+  });
+
+  // Trim history
+  if (product.inventoryChecks.history.length > 100) {
+    product.inventoryChecks.history = product.inventoryChecks.history.slice(-100);
+  }
+
+  await product.save();
+
+  console.log('✅ [updateProductPrice] Price updated successfully');
+
+  res.json({
+    success: true,
+    message: 'מחיר עודכן בהצלחה',
+    data: {
+      priceChanged: true,
+      previousCostUsd,
+      newCostUsd: usdCost,
+      priceDiffPercent,
+      previousSellPriceIls,
+      newSellPriceIls: finalSellPriceIls,
+      recommendedSellPriceIls: priceCalculation.sellPriceIls,
+      isManualOverride: !!overrideSellPrice,
+      multiplier: priceCalculation.multiplier,
+      lastChecked: product.inventoryChecks.lastChecked
+    }
+  });
+
+  console.log('🟠 [updateProductPrice] ===== סיום =====');
+});
+
 export default {
   updateAvailability,
   checkAndUpdateAvailability,
@@ -432,5 +642,6 @@ export default {
   getAvailabilityHistory,
   getPriceHistory,
   recordInventoryCheck,
-  getInventoryCheck
+  getInventoryCheck,
+  updateProductPrice
 };

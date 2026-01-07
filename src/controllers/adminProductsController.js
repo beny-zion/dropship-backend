@@ -69,20 +69,79 @@ export const getAllProducts = asyncHandler(async (req, res) => {
 
   // Build sort object
   const sortBy = req.query.sortBy || '-createdAt';
-  
-  // Execute queries in parallel
-  const [products, total] = await Promise.all([
-    Product.find(filter)
-      .populate('category', 'name slug') // קטגוריה ישנה
-      .populate('categories', 'name slug') // מערך קטגוריות חדש
-      .populate('inventoryChecks.lastChecked.checkedBy', 'name email') // 🆕 טען גם inventoryChecks!
-      .sort(sortBy)
-      .skip(skip)
-      .limit(limit)
-      .select('-__v')
-      .lean(), // Convert to plain JavaScript objects
-    Product.countDocuments(filter)
-  ]);
+
+  // Special handling for FIFO inventory check sort
+  // null lastChecked first, then oldest check dates
+  let sortOption;
+  if (sortBy === 'oldest_check') {
+    // MongoDB aggregation for complex sort: null first, then by date ascending
+    sortOption = { 'inventoryChecks.lastChecked.timestamp': 1 };
+  } else {
+    sortOption = sortBy;
+  }
+
+  // For FIFO sort, we need a different approach to put null values first
+  let products, total;
+
+  if (sortBy === 'oldest_check') {
+    // Use aggregation pipeline for proper null-first sorting
+    const pipeline = [
+      { $match: filter },
+      {
+        $addFields: {
+          hasLastChecked: {
+            $cond: {
+              if: { $ifNull: ['$inventoryChecks.lastChecked.timestamp', false] },
+              then: 1,
+              else: 0
+            }
+          }
+        }
+      },
+      {
+        $sort: {
+          hasLastChecked: 1, // 0 (null) first, 1 (has date) second
+          'inventoryChecks.lastChecked.timestamp': 1 // oldest first
+        }
+      },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const countPipeline = [
+      { $match: filter },
+      { $count: 'total' }
+    ];
+
+    const [productResults, countResults] = await Promise.all([
+      Product.aggregate(pipeline),
+      Product.aggregate(countPipeline)
+    ]);
+
+    products = productResults;
+    total = countResults[0]?.total || 0;
+
+    // Populate after aggregation
+    await Product.populate(products, [
+      { path: 'category', select: 'name slug' },
+      { path: 'categories', select: 'name slug' },
+      { path: 'inventoryChecks.lastChecked.checkedBy', select: 'name email' }
+    ]);
+  } else {
+    // Execute regular queries in parallel
+    [products, total] = await Promise.all([
+      Product.find(filter)
+        .populate('category', 'name slug') // קטגוריה ישנה
+        .populate('categories', 'name slug') // מערך קטגוריות חדש
+        .populate('inventoryChecks.lastChecked.checkedBy', 'name email') // 🆕 טען גם inventoryChecks!
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limit)
+        .select('-__v')
+        .lean(), // Convert to plain JavaScript objects
+      Product.countDocuments(filter)
+    ]);
+  }
 
   // Ensure _id is a string for each product
   const productsWithStringIds = products.map(product => ({

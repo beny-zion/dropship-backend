@@ -84,9 +84,34 @@ export const getProducts = async (req, res) => {
       if (maxPrice) query['price.ils'].$lte = Number(maxPrice);
     }
 
-    // חיפוש טקסט
+    // חיפוש טקסט - regex על כל השדות הרלוונטיים
     if (search) {
-      query.$text = { $search: search };
+      const searchTerm = search.trim();
+      // יצירת regex שמחפש את המילה בכל מקום בטקסט (case-insensitive)
+      const searchRegex = new RegExp(searchTerm, 'i');
+
+      // אם כבר יש $or מקטגוריה, צריך לשלב עם $and
+      const searchCondition = {
+        $or: [
+          { name_he: searchRegex },
+          { name_en: searchRegex },
+          { description_he: searchRegex },
+          { description_en: searchRegex },
+          { slug: searchRegex },
+          { 'specifications.brand': searchRegex },
+          { tags: searchRegex },
+          { asin: searchRegex }
+        ]
+      };
+
+      // אם יש כבר $or (מקטגוריה), נשלב עם $and
+      if (query.$or) {
+        const categoryCondition = { $or: query.$or };
+        delete query.$or;
+        query.$and = [categoryCondition, searchCondition];
+      } else {
+        query.$or = searchCondition.$or;
+      }
     }
 
     // מוצרים מומלצים
